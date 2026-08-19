@@ -21,8 +21,8 @@ jobs:
       - name: Check out ATSPM fixture source
         uses: actions/checkout@v6
         with:
-          repository: utahudot/udot-atspm
-          ref: main
+          repository: avenueconsultants/udot-atspm-development
+          ref: 9b486193ab586060f741c04087b2383c62d5e56c
           path: _source
 
       - name: Resolve fixture source commit
@@ -49,7 +49,7 @@ jobs:
         with:
           source-root: _source
           output-root: _generated
-          repository-url: https://github.com/utahudot/udot-atspm
+          repository-url: https://github.com/avenueconsultants/udot-atspm-development
           repository-ref: ${{ steps.source.outputs.sha }}
 
       - name: Verify expected output
