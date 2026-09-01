@@ -16,10 +16,10 @@ jobs:
 
     steps:
       - name: Check out generator
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Check out ATSPM fixture source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: avenueconsultants/udot-atspm-development
           ref: 9b486193ab586060f741c04087b2383c62d5e56c
