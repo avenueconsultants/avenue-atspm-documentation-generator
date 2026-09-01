@@ -1,0 +1,8 @@
+{
+  "LICENSE.jspdf-autotable.txt": "99a374e0385cf714d2faae5f6e02ec79217c6bcecec39bdb9e102091471b960a",
+  "LICENSE.jspdf.txt": "dc388ec35ff463288cdde3588a36fd4ed12a45deff053243b37309acc9ef583b",
+  "LICENSE.sheetjs.txt": "4d2a38ac35cda06a555c84074a819d413339cd3691b822cae50f8f322fe01f64",
+  "jspdf.plugin.autotable.min.js": "a65dff2c6a8296b16aff24e69f7683cd7dbaed4a4ec26b507d6840ee27d54649",
+  "jspdf.umd.min.js": "e6551fcdc32f09d6853b2c5126d18d01d9447e0da618a41a11ebeee0f6c20d54",
+  "xlsx.full.min.js": "cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41"
+}

@@ -75,7 +75,12 @@ public sealed class LogMessageSourceAnalyzerTests
 
         if (isAllowed)
         {
-            Assert.Equal(2, new LogMessageSourceAnalyzer().Analyze(directory.Path, "Logs").Count);
+            Assert.Equal(
+                2,
+                new LogMessageSourceAnalyzer().Analyze(
+                    directory.Path,
+                    "Logs",
+                    new HashSet<int> { eventId }).Count);
         }
         else
         {

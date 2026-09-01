@@ -33,31 +33,17 @@ public sealed partial class MarkdownDocumentationGenerator
                 return new
                 {
                     FileName = $"{container.Slug}.md",
-                    Contents = BuildContainerPage(container, sections, options)
+                    Contents = BuildContainerPage(container, sections, options, map.Examples)
                 };
             })
             .Append(new
             {
                 FileName = "index.md",
-                Contents = BuildIndexPage(map.Containers, options)
+                Contents = BuildIndexPage(map, options)
             })
             .ToArray();
 
-        var expectedFiles = map.Containers
-            .Select(container => $"{container.Slug}.md")
-            .Append("index.md")
-            .Append("log-messages.md")
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
         Directory.CreateDirectory(options.OutputRoot);
-        foreach (var existingFile in Directory.EnumerateFiles(options.OutputRoot, "*.md"))
-        {
-            if (!expectedFiles.Contains(Path.GetFileName(existingFile)))
-            {
-                File.Delete(existingFile);
-            }
-        }
-
         foreach (var page in pages)
         {
             WriteFile(
@@ -69,20 +55,20 @@ public sealed partial class MarkdownDocumentationGenerator
     }
 
     private static string BuildIndexPage(
-        IEnumerable<ContainerDefinition> containers,
+        DocumentationMap map,
         CliOptions options)
     {
         var builder = new StringBuilder();
         builder.AppendLine("# Configuration reference");
         builder.AppendLine();
         builder.AppendLine(
-            "Configuration sections are grouped by the ATSPM service or utility that consumes them.");
+            $"Configuration sections are grouped by the {EscapeText(map.ProductName)} service or utility that consumes them.");
         builder.AppendLine();
         AppendGenerationTimestamp(builder, options);
         builder.AppendLine("## Containers");
         builder.AppendLine();
 
-        foreach (var container in containers)
+        foreach (var container in map.Containers)
         {
             builder.AppendLine($"- [{EscapeText(container.Name)}]({container.Slug}.md)");
         }
@@ -98,7 +84,8 @@ public sealed partial class MarkdownDocumentationGenerator
     private static string BuildContainerPage(
         ContainerDefinition container,
         IReadOnlyList<ConfigurationSection> sections,
-        CliOptions options)
+        CliOptions options,
+        ExampleValueMap examples)
     {
         var builder = new StringBuilder();
         builder.AppendLine($"# {EscapeText(container.Name)} configuration");
@@ -123,14 +110,15 @@ public sealed partial class MarkdownDocumentationGenerator
             AppendSection(builder, section, options);
         }
 
-        AppendExampleConfiguration(builder, sections);
+        AppendExampleConfiguration(builder, sections, examples);
 
         return NormalizeLineEndings(builder.ToString());
     }
 
     private static void AppendExampleConfiguration(
         StringBuilder builder,
-        IEnumerable<ConfigurationSection> sections)
+        IEnumerable<ConfigurationSection> sections,
+        ExampleValueMap examples)
     {
         var configuration = new JsonObject();
 
@@ -152,7 +140,7 @@ public sealed partial class MarkdownDocumentationGenerator
 
             foreach (var property in section.Properties)
             {
-                current[property.Name] = CreateExampleValue(property);
+                current[property.Name] = CreateExampleValue(property, examples);
             }
         }
 
@@ -166,7 +154,7 @@ public sealed partial class MarkdownDocumentationGenerator
         builder.AppendLine("```");
     }
 
-    private static JsonNode? CreateExampleValue(ConfigurationProperty property)
+    private static JsonNode? CreateExampleValue(ConfigurationProperty property, ExampleValueMap examples)
     {
         var name = property.Name;
         var typeName = property.TypeName.TrimEnd('?');
@@ -177,6 +165,16 @@ public sealed partial class MarkdownDocumentationGenerator
             || name.Equals("Key", StringComparison.OrdinalIgnoreCase))
         {
             return JsonValue.Create("replace-with-a-secret");
+        }
+
+        if (examples.PropertyValues.TryGetValue(name, out var propertyValue))
+        {
+            return JsonNode.Parse(propertyValue.GetRawText());
+        }
+
+        if (examples.TypeValues.TryGetValue(typeName, out var typeValue))
+        {
+            return JsonNode.Parse(typeValue.GetRawText());
         }
 
         if (property.TypeName.EndsWith("?", StringComparison.Ordinal)
@@ -239,15 +237,6 @@ public sealed partial class MarkdownDocumentationGenerator
             return JsonValue.Create("./data");
         }
 
-        if (typeName == "RepositoryConfiguration")
-        {
-            return new JsonObject
-            {
-                ["Provider"] = "PostgreSql",
-                ["ConnectionString"] = "Host=localhost;Port=5432;Database=atspm;Username=atspm;Password=replace-with-a-secret"
-            };
-        }
-
         if (defaultExpression.Contains('.', StringComparison.Ordinal)
             && !defaultExpression.Contains('(', StringComparison.Ordinal))
         {
@@ -284,16 +273,10 @@ public sealed partial class MarkdownDocumentationGenerator
         return name switch
         {
             "Host" => "localhost",
-            "Database" => "atspm",
-            "User" or "UserName" => "atspm",
             "Issuer" => "https://identity.example.com",
-            "Audience" => "atspm",
             "Authority" => "https://identity-provider.example.com",
-            "ClientId" => "atspm",
             "CallbackPath" => "/signin-oidc",
             "Path" or "BasePath" => "./data",
-            "DefaultEmailAddress" => "atspm@example.com",
-            "Website" => "https://atspm.example.com",
             "TimeZoneId" => "America/Denver",
             "FileFormat" => "csv",
             "DateTimeFormat" => "yyyy-MM-dd HH:mm:ss",
@@ -350,14 +333,14 @@ public sealed partial class MarkdownDocumentationGenerator
             var environmentVariable = string.Join(
                 "<br>",
                 environmentVariables.Select(suffix =>
-                    $"`{EscapeCode(MappedSectionName.ToEnvironmentVariablePrefix(section.SectionName))}__{EscapeCode(suffix)}`"));
+                    CodeSpan($"{MappedSectionName.ToEnvironmentVariablePrefix(section.SectionName)}__{suffix}")));
             var enumOptions = property.Options is { Count: > 0 }
-                ? string.Join("<br>", property.Options.Select(option => $"`{EscapeCode(option)}`"))
+                ? string.Join("<br>", property.Options.Select(CodeSpan))
                 : string.Empty;
             builder.AppendLine(
-                $"| `{EscapeCode(property.Name)}` " +
-                $"| `{EscapeCode(property.TypeName)}` " +
-                $"| `{EscapeCode(property.DefaultExpression)}` " +
+                $"| {CodeSpan(property.Name)} " +
+                $"| {CodeSpan(property.TypeName)} " +
+                $"| {CodeSpan(property.DefaultExpression)} " +
                 $"| {(property.IsRequired ? "Yes" : "No")} " +
                 $"| {enumOptions} " +
                 $"| {environmentVariable} " +

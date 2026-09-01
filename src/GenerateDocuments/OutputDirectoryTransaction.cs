@@ -3,6 +3,19 @@ namespace AtspmDocsGenerator;
 public static class OutputDirectoryTransaction
 {
     public static void Run(string outputRoot, Action<string> generate)
+        => Run(outputRoot, generate, Directory.Move, Directory.Delete);
+
+    internal static void Run(
+        string outputRoot,
+        Action<string> generate,
+        Action<string, bool> deleteDirectory)
+        => Run(outputRoot, generate, Directory.Move, deleteDirectory);
+
+    internal static void Run(
+        string outputRoot,
+        Action<string> generate,
+        Action<string, string> moveDirectory,
+        Action<string, bool> deleteDirectory)
     {
         var target = Path.GetFullPath(outputRoot);
         var parent = Path.GetDirectoryName(target)
@@ -14,6 +27,7 @@ public static class OutputDirectoryTransaction
         var staging = Path.Combine(parent, $".{name}.staging-{transactionId}");
         var backup = Path.Combine(parent, $".{name}.backup-{transactionId}");
         var movedOriginal = false;
+        var swapped = false;
 
         Directory.CreateDirectory(staging);
         try
@@ -22,40 +36,57 @@ public static class OutputDirectoryTransaction
 
             if (Directory.Exists(target))
             {
-                Directory.Move(target, backup);
+                moveDirectory(target, backup);
                 movedOriginal = true;
             }
 
             try
             {
-                Directory.Move(staging, target);
+                moveDirectory(staging, target);
+                swapped = true;
             }
             catch
             {
                 if (movedOriginal && !Directory.Exists(target))
                 {
-                    Directory.Move(backup, target);
+                    moveDirectory(backup, target);
                     movedOriginal = false;
                 }
                 throw;
             }
 
-            if (movedOriginal)
-            {
-                Directory.Delete(backup, recursive: true);
-                movedOriginal = false;
-            }
         }
         finally
         {
             if (Directory.Exists(staging))
             {
-                Directory.Delete(staging, recursive: true);
+                deleteDirectory(staging, true);
             }
 
             if (movedOriginal && Directory.Exists(backup) && !Directory.Exists(target))
             {
-                Directory.Move(backup, target);
+                moveDirectory(backup, target);
+            }
+
+            if (swapped && Directory.Exists(backup))
+            {
+                try
+                {
+                    deleteDirectory(backup, true);
+                }
+                catch (Exception firstException)
+                {
+                    try
+                    {
+                        deleteDirectory(backup, true);
+                    }
+                    catch (Exception retryException)
+                    {
+                        throw new IOException(
+                            $"Generated output was installed, but its backup could not be removed: {backup}",
+                            new AggregateException(firstException, retryException));
+                    }
+                }
             }
         }
     }

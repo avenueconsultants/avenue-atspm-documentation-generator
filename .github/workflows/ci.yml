@@ -56,15 +56,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected=(
-            config-api.md
-            data-api.md
-            event-log-utility.md
-            identity-api.md
-            index.md
-            log-messages.md
-            report-api.md
-            watchdog.md
+          mapfile -t expected < <(
+            jq -r '.containers[].slug + ".md"' config/container-config-map.json
+            printf '%s\n' index.md log-messages.md
           )
 
           for file in "${expected[@]}"; do
@@ -72,3 +66,7 @@ jobs:
           done
 
           test "$(find _generated -maxdepth 1 -type f -name '*.md' | wc -l)" -eq "${#expected[@]}"
+          test -s "_generated/.atspm-docs-generator.json"
+
+      - name: Verify repository configuration consistency
+        run: python scripts/validate_repository.py

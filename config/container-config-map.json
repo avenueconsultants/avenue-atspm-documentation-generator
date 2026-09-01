@@ -1,10 +1,33 @@
 {
   "$schema": "./container-config-map.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "productName": "ATSPM",
   "sourcePaths": [
     "Atspm/Infrastructure/Configuration",
     "Atspm/Data/Enums"
   ],
+  "logMessages": {
+    "sourcePath": "Atspm/Infrastructure/LogMessages",
+    "description": "Logger messages declared in `Utah.Udot.Atspm.Infrastructure.LogMessages`, sorted by event ID.",
+    "allowedDuplicateEventIds": [201, 202, 203, 1000, 1001, 1002, 1003, 9001]
+  },
+  "examples": {
+    "propertyValues": {
+      "Database": "atspm",
+      "User": "atspm",
+      "UserName": "atspm",
+      "Audience": "atspm",
+      "ClientId": "atspm",
+      "DefaultEmailAddress": "atspm@example.com",
+      "Website": "https://atspm.example.com"
+    },
+    "typeValues": {
+      "RepositoryConfiguration": {
+        "Provider": "PostgreSql",
+        "ConnectionString": "Host=localhost;Port=5432;Database=atspm;Username=atspm;Password=replace-with-a-secret"
+      }
+    }
+  },
   "containers": [
     {
       "name": "Config API",

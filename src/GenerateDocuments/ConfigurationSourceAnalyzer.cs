@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -15,43 +16,49 @@ public sealed partial class ConfigurationSourceAnalyzer
         IEnumerable<string> sourcePaths)
     {
         var normalizedRoot = Path.GetFullPath(sourceRoot);
-        var sections = new Dictionary<string, ConfigurationSection>(StringComparer.Ordinal);
-        var types = new List<TypeDeclarationSyntax>();
-        var enums = new List<EnumDeclarationSyntax>();
-
-        foreach (var file in EnumerateSourceFiles(normalizedRoot, sourcePaths))
-        {
-            var source = File.ReadAllText(file);
-            var tree = CSharpSyntaxTree.ParseText(
-                source,
+        var trees = EnumerateSourceFiles(normalizedRoot, sourcePaths)
+            .Select(file => CSharpSyntaxTree.ParseText(
+                File.ReadAllText(file),
                 ParseOptions,
                 path: file,
-                encoding: Encoding.UTF8);
-            var root = tree.GetCompilationUnitRoot();
-
-            types.AddRange(root.DescendantNodes().OfType<TypeDeclarationSyntax>());
-            enums.AddRange(root.DescendantNodes().OfType<EnumDeclarationSyntax>());
-        }
-
-        var typesByName = types
-            .GroupBy(type => type.Identifier.ValueText, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
-        var enumsByName = enums
-            .GroupBy(enumDeclaration => enumDeclaration.Identifier.ValueText, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
-
-        foreach (var type in types)
-        {
-            var attribute = type.AttributeLists
-                .SelectMany(list => list.Attributes)
-                .FirstOrDefault(IsConfigurationSectionAttribute);
-
-            if (attribute is null)
+                encoding: Encoding.UTF8))
+            .ToArray();
+        var compilation = CSharpCompilation.Create(
+            "ConfigurationDocumentationAnalysis",
+            trees,
+            GetPlatformReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var attributedTypes = trees
+            .SelectMany(tree => tree.GetCompilationUnitRoot()
+                .DescendantNodes()
+                .OfType<TypeDeclarationSyntax>())
+            .Select(type => new
             {
-                continue;
+                Declaration = type,
+                Attribute = type.AttributeLists.SelectMany(list => list.Attributes)
+                    .FirstOrDefault(IsConfigurationSectionAttribute),
+                Symbol = compilation.GetSemanticModel(type.SyntaxTree).GetDeclaredSymbol(type)
+            })
+            .Where(item => item.Attribute is not null && item.Symbol is not null)
+            .GroupBy(item => item.Symbol!, SymbolEqualityComparer.Default)
+            .ToArray();
+        var sections = new Dictionary<string, ConfigurationSection>(StringComparer.Ordinal);
+
+        foreach (var group in attributedTypes)
+        {
+            if (group.Count() > 1)
+            {
+                throw new InvalidDataException(
+                    $"ConfigurationSection is declared on more than one part of '{group.Key!.ToDisplayString()}'.");
             }
 
-            var section = CreateSection(type, attribute, normalizedRoot, typesByName, enumsByName);
+            var item = group.Single();
+            var section = CreateSection(
+                item.Symbol!,
+                item.Declaration,
+                item.Attribute!,
+                compilation,
+                normalizedRoot);
             if (!sections.TryAdd(section.SectionName, section))
             {
                 throw new InvalidDataException(
@@ -67,25 +74,18 @@ public sealed partial class ConfigurationSourceAnalyzer
         IEnumerable<string> sourcePaths)
     {
         var files = new SortedSet<string>(StringComparer.Ordinal);
-
         foreach (var sourcePath in sourcePaths)
         {
-            var fullPath = SourcePath.ResolveWithinRoot(
-                sourceRoot,
-                sourcePath,
-                "Configured source path");
-
+            var fullPath = SourcePath.ResolveWithinRoot(sourceRoot, sourcePath, "Configured source path");
             if (!Directory.Exists(fullPath))
             {
-                throw new DirectoryNotFoundException(
-                    $"Configured source path does not exist: {fullPath}");
+                throw new DirectoryNotFoundException($"Configured source path does not exist: {fullPath}");
             }
 
             foreach (var file in Directory.EnumerateFiles(fullPath, "*.cs", SearchOption.AllDirectories))
             {
                 var relativePath = Path.GetRelativePath(sourceRoot, file);
-                if (relativePath
-                    .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                if (relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
                     .Any(part => part is ".git" or "bin" or "obj"))
                 {
                     continue;
@@ -99,44 +99,198 @@ public sealed partial class ConfigurationSourceAnalyzer
     }
 
     private static ConfigurationSection CreateSection(
-        TypeDeclarationSyntax type,
+        INamedTypeSymbol typeSymbol,
+        TypeDeclarationSyntax attributedDeclaration,
         AttributeSyntax attribute,
-        string sourceRoot,
-        IReadOnlyDictionary<string, TypeDeclarationSyntax> typesByName,
-        IReadOnlyDictionary<string, EnumDeclarationSyntax> enumsByName)
+        CSharpCompilation compilation,
+        string sourceRoot)
     {
         var arguments = attribute.ArgumentList?.Arguments ?? default;
         var sectionArgument = FindArgument(arguments, "sectionName", 0)
             ?? throw new InvalidDataException(
-                $"ConfigurationSection on '{type.Identifier.ValueText}' does not define a section name.");
-
+                $"ConfigurationSection on '{typeSymbol.ToDisplayString()}' does not define a section name.");
         var sectionName = ReadSectionName(sectionArgument.Expression);
         var descriptionArgument = FindArgument(arguments, "description", 1);
-        var description = descriptionArgument is null
-            ? null
-            : ReadOptionalString(descriptionArgument.Expression);
-
-        var properties = type.Members
-            .OfType<PropertyDeclarationSyntax>()
-            .Where(IsDocumentedProperty)
+        var description = descriptionArgument is null ? null : ReadOptionalString(descriptionArgument.Expression);
+        var properties = GetDocumentedProperties(typeSymbol)
             .Select(property => CreateProperty(
-                property,
-                typesByName,
-                enumsByName,
-                new HashSet<string>(StringComparer.Ordinal) { type.Identifier.ValueText }))
+                property.Symbol,
+                property.Syntax,
+                compilation,
+                new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default) { typeSymbol }))
             .ToArray();
-
-        var line = type.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
-        var relativePath = Path.GetRelativePath(sourceRoot, type.SyntaxTree.FilePath)
+        var line = attributedDeclaration.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        var relativePath = Path.GetRelativePath(sourceRoot, attributedDeclaration.SyntaxTree.FilePath)
             .Replace('\\', '/');
+        var summary = typeSymbol.DeclaringSyntaxReferences
+            .Select(reference => reference.GetSyntax())
+            .OfType<TypeDeclarationSyntax>()
+            .OrderBy(declaration => declaration.SyntaxTree.FilePath, StringComparer.Ordinal)
+            .ThenBy(declaration => declaration.SpanStart)
+            .Select(declaration => XmlDocumentationReader.ReadSummary(declaration))
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
-        return new ConfigurationSection(
-            sectionName,
-            description,
-            XmlDocumentationReader.ReadSummary(type),
-            relativePath,
-            line,
-            properties);
+        return new ConfigurationSection(sectionName, description, summary, relativePath, line, properties);
+    }
+
+    private static IEnumerable<(IPropertySymbol Symbol, PropertyDeclarationSyntax Syntax)>
+        GetDocumentedProperties(INamedTypeSymbol typeSymbol) =>
+        typeSymbol.GetMembers()
+            .OfType<IPropertySymbol>()
+            .Where(property => property.DeclaredAccessibility == Accessibility.Public && !property.IsStatic)
+            .Select(property => new
+            {
+                Symbol = property,
+                Syntax = property.DeclaringSyntaxReferences
+                    .Select(reference => reference.GetSyntax())
+                    .OfType<PropertyDeclarationSyntax>()
+                    .FirstOrDefault()
+            })
+            .Where(item => item.Syntax is not null)
+            .OrderBy(item => item.Syntax!.SyntaxTree.FilePath, StringComparer.Ordinal)
+            .ThenBy(item => item.Syntax!.SpanStart)
+            .Select(item => (item.Symbol, item.Syntax!));
+
+    private static ConfigurationProperty CreateProperty(
+        IPropertySymbol propertySymbol,
+        PropertyDeclarationSyntax property,
+        CSharpCompilation compilation,
+        IReadOnlySet<INamedTypeSymbol> visitedTypes)
+    {
+        var typeName = property.Type.WithoutTrivia().NormalizeWhitespace().ToFullString();
+        var defaultExpression = property.Initializer?.Value.WithoutTrivia().NormalizeWhitespace().ToFullString()
+            ?? "Not set";
+        var isRequired = propertySymbol.IsRequired
+            || property.AttributeLists.SelectMany(list => list.Attributes).Any(attribute =>
+            {
+                var name = attribute.Name.ToString().Split('.').Last();
+                return name is "Required" or "RequiredAttribute";
+            });
+
+        return new ConfigurationProperty(
+            property.Identifier.ValueText,
+            typeName,
+            defaultExpression,
+            isRequired,
+            XmlDocumentationReader.ReadSummary(property, includeInheritDoc: true),
+            GetEnvironmentVariableSuffixes(propertySymbol, property, compilation, visitedTypes),
+            GetEnumOptions(propertySymbol.Type, property, compilation));
+    }
+
+    private static IReadOnlyList<string>? GetEnumOptions(
+        ITypeSymbol propertyType,
+        PropertyDeclarationSyntax property,
+        CSharpCompilation compilation)
+    {
+        var type = ResolveElementType(propertyType, property, compilation).ElementType;
+        return type.TypeKind == TypeKind.Enum
+            ? type.GetMembers().OfType<IFieldSymbol>()
+                .Where(field => field.HasConstantValue)
+                .Select(field => field.Name)
+                .ToArray()
+            : null;
+    }
+
+    private static IReadOnlyList<string> GetEnvironmentVariableSuffixes(
+        IPropertySymbol propertySymbol,
+        PropertyDeclarationSyntax property,
+        CSharpCompilation compilation,
+        IReadOnlySet<INamedTypeSymbol> visitedTypes)
+    {
+        var propertyName = property.Identifier.ValueText;
+        var described = ResolveElementType(propertySymbol.Type, property, compilation);
+        if (described.IsDictionary)
+        {
+            return [$"{propertyName}__KEY"];
+        }
+
+        var index = described.IsCollection ? "__0" : string.Empty;
+        if (described.ElementType is not INamedTypeSymbol nestedType
+            || !nestedType.Locations.Any(location => location.IsInSource)
+            || visitedTypes.Contains(nestedType))
+        {
+            return [$"{propertyName}{index}"];
+        }
+
+        var nextVisited = new HashSet<INamedTypeSymbol>(visitedTypes, SymbolEqualityComparer.Default)
+        {
+            nestedType
+        };
+        var childSuffixes = GetDocumentedProperties(nestedType)
+            .SelectMany(child => GetEnvironmentVariableSuffixes(
+                child.Symbol,
+                child.Syntax,
+                compilation,
+                nextVisited))
+            .ToArray();
+        return childSuffixes.Length == 0
+            ? [$"{propertyName}{index}"]
+            : childSuffixes.Select(child => $"{propertyName}{index}__{child}").ToArray();
+    }
+
+    private static (ITypeSymbol ElementType, bool IsCollection, bool IsDictionary) ResolveElementType(
+        ITypeSymbol propertyType,
+        PropertyDeclarationSyntax property,
+        CSharpCompilation compilation)
+    {
+        var type = propertyType;
+        if (type is IErrorTypeSymbol errorType)
+        {
+            var candidates = errorType.CandidateSymbols.OfType<ITypeSymbol>()
+                .Select(candidate => candidate.ToDisplayString())
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+            if (candidates.Length > 1)
+            {
+                throw new InvalidDataException(
+                    $"Type '{property.Type}' on property '{property.Identifier.ValueText}' is ambiguous. " +
+                    $"Candidates: {string.Join(", ", candidates)}.");
+            }
+
+            var semanticType = compilation.GetSemanticModel(property.SyntaxTree).GetTypeInfo(property.Type).Type;
+            if (semanticType is not null)
+            {
+                type = semanticType;
+            }
+        }
+
+        if (type is IArrayTypeSymbol array)
+        {
+            return (array.ElementType, true, false);
+        }
+
+        if (type is INamedTypeSymbol nullable
+            && nullable.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+        {
+            type = nullable.TypeArguments[0];
+        }
+
+        if (type is INamedTypeSymbol generic && generic.IsGenericType)
+        {
+            var name = generic.OriginalDefinition.Name;
+            var isDictionary = name is "Dictionary" or "IDictionary" or "IReadOnlyDictionary";
+            var isCollection = name is "IEnumerable" or "ICollection" or "IReadOnlyCollection"
+                or "IList" or "IReadOnlyList" or "List" or "HashSet";
+            if (isCollection || isDictionary)
+            {
+                return (
+                    generic.TypeArguments[isDictionary ? generic.TypeArguments.Length - 1 : 0],
+                    isCollection,
+                    isDictionary);
+            }
+        }
+
+        return (type, false, false);
+    }
+
+    private static ImmutableArray<MetadataReference> GetPlatformReferences()
+    {
+        var assemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string
+            ?? throw new InvalidOperationException("Trusted platform assemblies are unavailable.");
+        return assemblies.Split(Path.PathSeparator)
+            .Select(path => MetadataReference.CreateFromFile(path))
+            .ToImmutableArray<MetadataReference>();
     }
 
     private static AttributeArgumentSyntax? FindArgument(
@@ -144,19 +298,11 @@ public sealed partial class ConfigurationSourceAnalyzer
         string name,
         int positionalIndex)
     {
-        var named = arguments.FirstOrDefault(argument =>
-            string.Equals(
-                argument.NameColon?.Name.Identifier.ValueText
-                    ?? argument.NameEquals?.Name.Identifier.ValueText,
-                name,
-                StringComparison.OrdinalIgnoreCase));
-
-        if (named is not null)
-        {
-            return named;
-        }
-
-        return arguments
+        var named = arguments.FirstOrDefault(argument => string.Equals(
+            argument.NameColon?.Name.Identifier.ValueText ?? argument.NameEquals?.Name.Identifier.ValueText,
+            name,
+            StringComparison.OrdinalIgnoreCase));
+        return named ?? arguments
             .Where(argument => argument.NameColon is null && argument.NameEquals is null)
             .ElementAtOrDefault(positionalIndex);
     }
@@ -174,10 +320,7 @@ public sealed partial class ConfigurationSourceAnalyzer
             && identifier.Identifier.ValueText == "nameof"
             && invocation.ArgumentList.Arguments.Count == 1)
         {
-            return invocation.ArgumentList.Arguments[0].Expression
-                .ToString()
-                .Split('.')
-                .Last();
+            return invocation.ArgumentList.Arguments[0].Expression.ToString().Split('.').Last();
         }
 
         throw new InvalidDataException(
@@ -205,120 +348,5 @@ public sealed partial class ConfigurationSourceAnalyzer
     {
         var name = attribute.Name.ToString().Split('.').Last();
         return name is "ConfigurationSection" or "ConfigurationSectionAttribute";
-    }
-
-    private static bool IsDocumentedProperty(PropertyDeclarationSyntax property)
-    {
-        var isStatic = property.Modifiers.Any(SyntaxKind.StaticKeyword);
-        var isPublic = property.Modifiers.Any(SyntaxKind.PublicKeyword);
-
-        return isPublic && !isStatic;
-    }
-
-    private static ConfigurationProperty CreateProperty(
-        PropertyDeclarationSyntax property,
-        IReadOnlyDictionary<string, TypeDeclarationSyntax> typesByName,
-        IReadOnlyDictionary<string, EnumDeclarationSyntax> enumsByName,
-        IReadOnlySet<string> visitedTypes)
-    {
-        var typeName = property.Type
-            .WithoutTrivia()
-            .NormalizeWhitespace()
-            .ToFullString();
-        var defaultExpression = property.Initializer?.Value
-            .WithoutTrivia()
-            .NormalizeWhitespace()
-            .ToFullString()
-            ?? "Not set";
-        var isRequired = property.Modifiers.Any(SyntaxKind.RequiredKeyword)
-            || property.AttributeLists
-                .SelectMany(list => list.Attributes)
-                .Any(attribute =>
-                {
-                    var name = attribute.Name.ToString().Split('.').Last();
-                    return name is "Required" or "RequiredAttribute";
-                });
-
-        return new ConfigurationProperty(
-            property.Identifier.ValueText,
-            typeName,
-            defaultExpression,
-            isRequired,
-            XmlDocumentationReader.ReadSummary(property, includeInheritDoc: true),
-            GetEnvironmentVariableSuffixes(property, typesByName, visitedTypes),
-            GetEnumOptions(property.Type, enumsByName));
-    }
-
-    private static IReadOnlyList<string>? GetEnumOptions(
-        TypeSyntax propertyType,
-        IReadOnlyDictionary<string, EnumDeclarationSyntax> enumsByName)
-    {
-        var (typeName, _, _) = DescribeType(propertyType);
-        if (!enumsByName.TryGetValue(typeName, out var enumDeclaration))
-        {
-            return null;
-        }
-
-        return enumDeclaration.Members
-            .Select(member => member.Identifier.ValueText)
-            .ToArray();
-    }
-
-    private static IReadOnlyList<string> GetEnvironmentVariableSuffixes(
-        PropertyDeclarationSyntax property,
-        IReadOnlyDictionary<string, TypeDeclarationSyntax> typesByName,
-        IReadOnlySet<string> visitedTypes)
-    {
-        var propertyName = property.Identifier.ValueText;
-        var (typeName, isCollection, isDictionary) = DescribeType(property.Type);
-        if (isDictionary)
-        {
-            return [$"{propertyName}__KEY"];
-        }
-
-        var index = isCollection ? "__0" : string.Empty;
-        if (!typesByName.TryGetValue(typeName, out var nestedType) || visitedTypes.Contains(typeName))
-        {
-            return [$"{propertyName}{index}"];
-        }
-
-        var nextVisited = new HashSet<string>(visitedTypes, StringComparer.Ordinal) { typeName };
-        var childSuffixes = nestedType.Members
-            .OfType<PropertyDeclarationSyntax>()
-            .Where(IsDocumentedProperty)
-            .SelectMany(child => GetEnvironmentVariableSuffixes(child, typesByName, nextVisited))
-            .ToArray();
-        return childSuffixes.Length == 0
-            ? [$"{propertyName}{index}"]
-            : childSuffixes.Select(child => $"{propertyName}{index}__{child}").ToArray();
-    }
-
-    private static (string TypeName, bool IsCollection, bool IsDictionary) DescribeType(TypeSyntax type)
-    {
-        type = type is NullableTypeSyntax nullable ? nullable.ElementType : type;
-        if (type is ArrayTypeSyntax array)
-        {
-            return (GetSimpleTypeName(array.ElementType), true, false);
-        }
-
-        if (type is GenericNameSyntax generic)
-        {
-            var name = generic.Identifier.ValueText;
-            var isDictionary = name is "Dictionary" or "IDictionary" or "IReadOnlyDictionary";
-            var isCollection = name is "IEnumerable" or "ICollection" or "IReadOnlyCollection"
-                or "IList" or "IReadOnlyList" or "List" or "HashSet";
-            var elementType = isDictionary
-                ? generic.TypeArgumentList.Arguments.Last()
-                : generic.TypeArgumentList.Arguments.First();
-            return (GetSimpleTypeName(elementType), isCollection, isDictionary);
-        }
-
-        return (GetSimpleTypeName(type), false, false);
-    }
-
-    private static string GetSimpleTypeName(TypeSyntax type)
-    {
-        var value = type.ToString().TrimEnd('?');
-        return value.Split('.').Last();
     }
 }

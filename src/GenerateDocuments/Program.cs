@@ -26,12 +26,14 @@ public static class Program
         {
             var options = parseResult.Options;
             var map = DocumentationMapLoader.Load(options.MapPath);
+            GeneratedOutputPolicy.ValidateExisting(options.OutputRoot, map);
             var sections = new ConfigurationSourceAnalyzer().Analyze(
                 options.SourceRoot,
                 map.SourcePaths);
             var logMessages = new LogMessageSourceAnalyzer().Analyze(
                 options.SourceRoot,
-                LogMessageSourceAnalyzer.DefaultSourcePath);
+                map.LogMessages.SourcePath,
+                map.LogMessages.AllowedDuplicateEventIds.ToHashSet());
             GenerationResult? result = null;
             LogMessageGenerationResult? logResult = null;
 
@@ -45,7 +47,9 @@ public static class Program
                 logResult = new LogMessageDocumentationGenerator().Generate(
                     logMessages,
                     Path.Combine(stagingRoot, "log-messages.md"),
-                    stagingOptions);
+                    stagingOptions,
+                    map.LogMessages.Description);
+                GeneratedOutputPolicy.WriteManifest(stagingRoot, map);
             });
 
             Console.WriteLine(
@@ -69,10 +73,9 @@ public static class Program
         }
         catch (Exception exception) when (
             exception is ArgumentException
-            or DirectoryNotFoundException
-            or FileNotFoundException
             or InvalidDataException
             or IOException
+            or UnauthorizedAccessException
             or JsonException)
         {
             Console.Error.WriteLine($"Generation failed: {exception.Message}");

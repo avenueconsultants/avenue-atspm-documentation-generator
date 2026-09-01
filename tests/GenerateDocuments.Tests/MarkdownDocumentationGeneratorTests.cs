@@ -10,12 +10,13 @@ public sealed class MarkdownDocumentationGeneratorTests
         using var directory = new TemporaryDirectory();
         var output = System.IO.Path.Combine(directory.Path, "output");
         Directory.CreateDirectory(output);
-        File.WriteAllText(System.IO.Path.Combine(output, "stale.md"), "stale");
-
         var map = new DocumentationMap
         {
-            SchemaVersion = 1,
+            SchemaVersion = 2,
+            ProductName = "ATSPM",
             SourcePaths = ["src"],
+            LogMessages = new() { SourcePath = "Logs", Description = "Test log messages." },
+            Examples = TestExamples(),
             Containers =
             [
                 new ContainerDefinition
@@ -53,6 +54,7 @@ public sealed class MarkdownDocumentationGeneratorTests
         };
         var options = new CliOptions(
             directory.Path,
+            directory.Path,
             output,
             System.IO.Path.Combine(directory.Path, "map.json"),
             "https://github.com/utahudot/udot-atspm",
@@ -62,8 +64,6 @@ public sealed class MarkdownDocumentationGeneratorTests
         var result = new MarkdownDocumentationGenerator().Generate(map, sections, options);
 
         Assert.Equal(new GenerationResult(1, 1), result);
-        Assert.False(File.Exists(System.IO.Path.Combine(output, "stale.md")));
-
         var actualPath = System.IO.Path.Combine(output, "event-log-utility.md");
         var expectedPath = System.IO.Path.Combine(
             AppContext.BaseDirectory,
@@ -90,8 +90,10 @@ public sealed class MarkdownDocumentationGeneratorTests
         using var directory = new TemporaryDirectory();
         var map = new DocumentationMap
         {
-            SchemaVersion = 1,
+            SchemaVersion = 2,
+            ProductName = "Test product",
             SourcePaths = ["src"],
+            LogMessages = new() { SourcePath = "Logs", Description = "Test log messages." },
             Containers =
             [
                 new ContainerDefinition
@@ -106,6 +108,7 @@ public sealed class MarkdownDocumentationGeneratorTests
         Directory.CreateDirectory(output);
         File.WriteAllText(System.IO.Path.Combine(output, "existing.md"), "existing");
         var options = new CliOptions(
+            directory.Path,
             directory.Path,
             output,
             "map.json",
@@ -130,8 +133,10 @@ public sealed class MarkdownDocumentationGeneratorTests
         var output = System.IO.Path.Combine(directory.Path, "output");
         var map = new DocumentationMap
         {
-            SchemaVersion = 1,
+            SchemaVersion = 2,
+            ProductName = "Test product",
             SourcePaths = ["src"],
+            LogMessages = new() { SourcePath = "Logs", Description = "Test log messages." },
             Containers =
             [
                 new ContainerDefinition
@@ -161,6 +166,7 @@ public sealed class MarkdownDocumentationGeneratorTests
         };
         var options = new CliOptions(
             directory.Path,
+            directory.Path,
             output,
             "map.json",
             "https://github.com/example/source",
@@ -178,5 +184,25 @@ public sealed class MarkdownDocumentationGeneratorTests
         Assert.Contains("\"SampleOptions\": {", actual);
         Assert.Contains("\"Nested\": {", actual);
         Assert.Contains("\"Host\": \"localhost\"", actual);
+    }
+
+    private static ExampleValueMap TestExamples()
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(
+            """
+            {
+              "Database": "atspm",
+              "User": "atspm",
+              "Audience": "atspm",
+              "ClientId": "atspm",
+              "DefaultEmailAddress": "atspm@example.com",
+              "Website": "https://atspm.example.com"
+            }
+            """);
+        return new ExampleValueMap
+        {
+            PropertyValues = document.RootElement.EnumerateObject()
+                .ToDictionary(property => property.Name, property => property.Value.Clone(), StringComparer.Ordinal)
+        };
     }
 }

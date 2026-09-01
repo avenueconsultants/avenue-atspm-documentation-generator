@@ -7,8 +7,10 @@ public sealed class DocumentationMapLoaderTests
     {
         var map = new DocumentationMap
         {
-            SchemaVersion = 1,
+            SchemaVersion = 2,
+            ProductName = "Test product",
             SourcePaths = ["src"],
+            LogMessages = new() { SourcePath = "Logs", Description = "Test log messages." },
             Containers =
             [
                 new ContainerDefinition
@@ -37,8 +39,10 @@ public sealed class DocumentationMapLoaderTests
     {
         var map = new DocumentationMap
         {
-            SchemaVersion = 1,
+            SchemaVersion = 2,
+            ProductName = "Test product",
             SourcePaths = ["src"],
+            LogMessages = new() { SourcePath = "Logs", Description = "Test log messages." },
             Containers =
             [
                 new ContainerDefinition
@@ -61,8 +65,10 @@ public sealed class DocumentationMapLoaderTests
     {
         var map = new DocumentationMap
         {
-            SchemaVersion = 1,
-            SourcePaths = ["src", "SRC"],
+            SchemaVersion = 2,
+            ProductName = "Test product",
+            SourcePaths = ["src", "src"],
+            LogMessages = new() { SourcePath = "Logs", Description = "Test log messages." },
             Containers =
             [
                 new ContainerDefinition
@@ -79,8 +85,10 @@ public sealed class DocumentationMapLoaderTests
 
         var slugMap = new DocumentationMap
         {
-            SchemaVersion = 1,
+            SchemaVersion = 2,
+            ProductName = "Test product",
             SourcePaths = ["src"],
+            LogMessages = new() { SourcePath = "Logs", Description = "Test log messages." },
             Containers = map.Containers
         };
         var slugException = Assert.Throws<InvalidDataException>(
@@ -103,5 +111,28 @@ public sealed class DocumentationMapLoaderTests
             """);
 
         Assert.Throws<System.Text.Json.JsonException>(() => DocumentationMapLoader.Load(path));
+    }
+
+    [Fact]
+    public void ValidateAllowsCaseDistinctSectionNames()
+    {
+        var map = new DocumentationMap
+        {
+            SchemaVersion = 2,
+            ProductName = "Test product",
+            SourcePaths = ["src"],
+            LogMessages = new() { SourcePath = "Logs", Description = "Test log messages." },
+            Containers =
+            [
+                new ContainerDefinition
+                {
+                    Name = "Example",
+                    Slug = "example",
+                    Sections = ["Jwt", "JWT"]
+                }
+            ]
+        };
+
+        DocumentationMapLoader.Validate(map);
     }
 }

@@ -16,12 +16,17 @@ public sealed class LogMessageDocumentationGeneratorTests
         var options = new CliOptions(
             directory.Path,
             directory.Path,
+            directory.Path,
             "map.json",
             "https://github.com/example/source",
             "abc123",
             new DateTimeOffset(2026, 8, 18, 19, 15, 0, TimeSpan.Zero));
 
-        var result = new LogMessageDocumentationGenerator().Generate(messages, outputPath, options);
+        var result = new LogMessageDocumentationGenerator().Generate(
+            messages,
+            outputPath,
+            options,
+            "Logger messages from the test source, sorted by event ID.");
 
         Assert.Equal(new LogMessageGenerationResult(3, 1), result);
         var markdown = File.ReadAllText(outputPath);

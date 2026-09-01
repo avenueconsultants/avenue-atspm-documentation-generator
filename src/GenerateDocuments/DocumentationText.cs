@@ -43,8 +43,21 @@ internal static class DocumentationText
             .Replace("\r", " ", StringComparison.Ordinal)
             .Replace("\n", " ", StringComparison.Ordinal);
 
-    public static string EscapeCode(string value) =>
-        EscapeText(value).Replace("`", "\\`", StringComparison.Ordinal);
+    public static string CodeSpan(string value)
+    {
+        var escaped = EscapeText(value);
+        var longestRun = 0;
+        var currentRun = 0;
+        foreach (var character in escaped)
+        {
+            currentRun = character == '`' ? currentRun + 1 : 0;
+            longestRun = Math.Max(longestRun, currentRun);
+        }
+
+        var fence = new string('`', Math.Max(1, longestRun + 1));
+        var padding = escaped.StartsWith('`') || escaped.EndsWith('`') ? " " : string.Empty;
+        return $"{fence}{padding}{escaped}{padding}{fence}";
+    }
 
     public static string NormalizeLineEndings(string value) =>
         value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');

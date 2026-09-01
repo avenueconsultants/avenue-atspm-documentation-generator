@@ -136,6 +136,96 @@ public sealed class ConfigurationSourceAnalyzerTests
     }
 
     [Fact]
+    public void AnalyzeCombinesPartialDeclarations()
+    {
+        using var directory = new TemporaryDirectory();
+        directory.WriteFile(
+            "Part1.cs",
+            """
+            [ConfigurationSection("Partial")]
+            public partial class PartialOptions
+            {
+                public string First { get; set; }
+            }
+            """);
+        directory.WriteFile(
+            "Part2.cs",
+            """
+            public partial class PartialOptions
+            {
+                public string Second { get; set; }
+            }
+            """);
+
+        var section = Assert.Single(
+            new ConfigurationSourceAnalyzer().Analyze(directory.Path, ["."])).Value;
+
+        Assert.Equal(["First", "Second"], section.Properties.Select(property => property.Name));
+    }
+
+    [Fact]
+    public void AnalyzeRejectsAmbiguousNestedTypeReferences()
+    {
+        using var directory = new TemporaryDirectory();
+        directory.WriteFile(
+            "Ambiguous.cs",
+            """
+            using First;
+            using Second;
+
+            [ConfigurationSection("Sample")]
+            public class SampleOptions
+            {
+                public NestedOptions Nested { get; set; }
+            }
+
+            namespace First { public class NestedOptions { public string One { get; set; } } }
+            namespace Second { public class NestedOptions { public string Two { get; set; } } }
+            """);
+
+        var exception = Assert.Throws<InvalidDataException>(
+            () => new ConfigurationSourceAnalyzer().Analyze(directory.Path, ["."]));
+
+        Assert.Contains("ambiguous", exception.Message);
+        Assert.Contains("First.NestedOptions", exception.Message);
+        Assert.Contains("Second.NestedOptions", exception.Message);
+    }
+
+    [Fact]
+    public void AnalyzeResolvesSameNamedTypesInTheirNamespace()
+    {
+        using var directory = new TemporaryDirectory();
+        directory.WriteFile(
+            "Qualified.cs",
+            """
+            namespace First
+            {
+                [ConfigurationSection("Sample")]
+                public class SampleOptions
+                {
+                    public NestedOptions Nested { get; set; }
+                    public Mode Mode { get; set; }
+                }
+
+                public class NestedOptions { public string One { get; set; } }
+                public enum Mode { First, Second }
+            }
+
+            namespace Second
+            {
+                public class NestedOptions { public string Two { get; set; } }
+                public enum Mode { Other }
+            }
+            """);
+
+        var section = Assert.Single(
+            new ConfigurationSourceAnalyzer().Analyze(directory.Path, ["."])).Value;
+
+        Assert.Equal(["Nested__One"], section.Properties.Single(property => property.Name == "Nested").EnvironmentVariableSuffixes);
+        Assert.Equal(["First", "Second"], section.Properties.Single(property => property.Name == "Mode").Options);
+    }
+
+    [Fact]
     public void AnalyzeRejectsSourcePathsOutsideTheRepository()
     {
         using var directory = new TemporaryDirectory();

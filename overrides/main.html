@@ -298,7 +298,7 @@
 
       excelButton.addEventListener('click', () => runDownload(excelButton, 'Creating Excel...', async () => {
         await loadScript(
-          'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js',
+          '{{ "assets/vendor/xlsx.full.min.js" | url }}',
           () => Boolean(window.XLSX));
 
         const { headers, rows } = tableData();
@@ -320,10 +320,10 @@
 
       pdfButton.addEventListener('click', () => runDownload(pdfButton, 'Creating PDF...', async () => {
         await loadScript(
-          'https://unpkg.com/jspdf@4.2.1/dist/jspdf.umd.min.js',
+          '{{ "assets/vendor/jspdf.umd.min.js" | url }}',
           () => Boolean(window.jspdf));
         await loadScript(
-          'https://unpkg.com/jspdf-autotable@5.0.8/dist/jspdf.plugin.autotable.min.js',
+          '{{ "assets/vendor/jspdf.plugin.autotable.min.js" | url }}',
           () => Boolean(window.jspdf?.jsPDF?.API?.autoTable));
 
         const { headers, rows } = tableData();

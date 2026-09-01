@@ -7,15 +7,13 @@ namespace AtspmDocsGenerator;
 
 public sealed partial class LogMessageSourceAnalyzer
 {
-    public const string DefaultSourcePath = "Atspm/Infrastructure/LogMessages";
-
-    public static readonly IReadOnlySet<int> AllowedDuplicateEventIds =
-        new HashSet<int> { 201, 202, 203, 1000, 1001, 1002, 1003, 9001 };
-
     private static readonly CSharpParseOptions ParseOptions =
         new(languageVersion: LanguageVersion.Latest, documentationMode: DocumentationMode.Parse);
 
-    public IReadOnlyList<LogMessageDefinition> Analyze(string sourceRoot, string sourcePath)
+    public IReadOnlyList<LogMessageDefinition> Analyze(
+        string sourceRoot,
+        string sourcePath,
+        IReadOnlySet<int>? allowedDuplicateEventIds = null)
     {
         var normalizedRoot = Path.GetFullPath(sourceRoot);
         var fullSourcePath = SourcePath.ResolveWithinRoot(
@@ -56,7 +54,8 @@ public sealed partial class LogMessageSourceAnalyzer
 
         var unexpectedDuplicates = messages
             .GroupBy(message => message.EventId)
-            .Where(group => group.Count() > 1 && !AllowedDuplicateEventIds.Contains(group.Key))
+            .Where(group => group.Count() > 1
+                && !(allowedDuplicateEventIds?.Contains(group.Key) ?? false))
             .Select(group => group.Key)
             .Order()
             .ToArray();

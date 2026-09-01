@@ -1,0 +1,4 @@
+name: ATSPM documentation generator CodeQL configuration
+
+paths-ignore:
+  - overrides/assets/vendor

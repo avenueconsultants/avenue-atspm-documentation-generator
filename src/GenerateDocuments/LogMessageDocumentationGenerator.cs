@@ -11,7 +11,8 @@ public sealed class LogMessageDocumentationGenerator
     public LogMessageGenerationResult Generate(
         IReadOnlyList<LogMessageDefinition> messages,
         string outputPath,
-        CliOptions options)
+        CliOptions options,
+        string sourceDescription)
     {
         var duplicateEventIdCount = messages
             .GroupBy(message => message.EventId)
@@ -19,8 +20,7 @@ public sealed class LogMessageDocumentationGenerator
         var builder = new StringBuilder();
         builder.AppendLine("# Log message reference");
         builder.AppendLine();
-        builder.AppendLine(
-            "Logger messages declared in `Utah.Udot.Atspm.Infrastructure.LogMessages`, sorted by event ID.");
+        builder.AppendLine(sourceDescription);
         builder.AppendLine();
         builder.AppendLine(GenerationTimestamp(options.GeneratedAt));
         builder.AppendLine();
@@ -57,7 +57,7 @@ public sealed class LogMessageDocumentationGenerator
             builder.AppendLine(
                 $"| `{message.EventId}` " +
                 $"| {EscapeTableText(message.EventName)} " +
-                $"| `{EscapeCode(message.Level)}` " +
+                $"| {CodeSpan(message.Level)} " +
                 $"| {EscapeTableText(message.Summary ?? string.Empty)} " +
                 $"| [{EscapeTableText(Path.GetFileName(message.SourcePath))}]({sourceUrl}) |");
         }

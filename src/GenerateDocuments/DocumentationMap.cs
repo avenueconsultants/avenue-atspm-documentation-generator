@@ -11,9 +11,33 @@ public sealed class DocumentationMap
 
     public int SchemaVersion { get; init; }
 
+    public string ProductName { get; init; } = string.Empty;
+
     public IReadOnlyList<string> SourcePaths { get; init; } = [];
 
+    public LogMessageMap LogMessages { get; init; } = new();
+
+    public ExampleValueMap Examples { get; init; } = new();
+
     public IReadOnlyList<ContainerDefinition> Containers { get; init; } = [];
+}
+
+public sealed class LogMessageMap
+{
+    public string SourcePath { get; init; } = string.Empty;
+
+    public string Description { get; init; } = string.Empty;
+
+    public IReadOnlyList<int> AllowedDuplicateEventIds { get; init; } = [];
+}
+
+public sealed class ExampleValueMap
+{
+    public IReadOnlyDictionary<string, JsonElement> PropertyValues { get; init; } =
+        new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+
+    public IReadOnlyDictionary<string, JsonElement> TypeValues { get; init; } =
+        new Dictionary<string, JsonElement>(StringComparer.Ordinal);
 }
 
 public sealed class ContainerDefinition
@@ -47,10 +71,15 @@ public static class DocumentationMapLoader
 
     public static void Validate(DocumentationMap map)
     {
-        if (map.SchemaVersion != 1)
+        if (map.SchemaVersion != 2)
         {
             throw new InvalidDataException(
-                $"Unsupported configuration map schema version '{map.SchemaVersion}'. Expected version 1.");
+                $"Unsupported configuration map schema version '{map.SchemaVersion}'. Expected version 2.");
+        }
+
+        if (string.IsNullOrWhiteSpace(map.ProductName))
+        {
+            throw new InvalidDataException("A non-empty product name is required.");
         }
 
         if (map.SourcePaths.Count == 0 || map.SourcePaths.Any(string.IsNullOrWhiteSpace))
@@ -59,6 +88,22 @@ public static class DocumentationMapLoader
         }
 
         EnsureUnique(map.SourcePaths, "source path");
+
+        if (string.IsNullOrWhiteSpace(map.LogMessages.SourcePath))
+        {
+            throw new InvalidDataException("A non-empty log message source path is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(map.LogMessages.Description))
+        {
+            throw new InvalidDataException("A non-empty log message description is required.");
+        }
+
+        if (map.LogMessages.AllowedDuplicateEventIds.Distinct().Count()
+            != map.LogMessages.AllowedDuplicateEventIds.Count)
+        {
+            throw new InvalidDataException("Allowed duplicate event IDs must be unique.");
+        }
 
         if (map.Containers.Count == 0)
         {
@@ -99,7 +144,7 @@ public static class DocumentationMapLoader
     private static void EnsureUnique(IEnumerable<string> values, string valueDescription)
     {
         var duplicate = values
-            .GroupBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(value => value, StringComparer.Ordinal)
             .FirstOrDefault(group => group.Count() > 1);
 
         if (duplicate is not null)

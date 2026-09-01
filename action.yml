@@ -30,6 +30,7 @@ runs:
       env:
         INPUT_SOURCE_ROOT: ${{ inputs.source-root }}
         INPUT_OUTPUT_ROOT: ${{ inputs.output-root }}
+        INPUT_REPOSITORY_REF: ${{ inputs.repository-ref }}
       run: |
         set -euo pipefail
 
@@ -42,8 +43,34 @@ runs:
           fi
         }
 
-        echo "source-root=$(resolve_path "$INPUT_SOURCE_ROOT")" >> "$GITHUB_OUTPUT"
-        echo "output-root=$(resolve_path "$INPUT_OUTPUT_ROOT")" >> "$GITHUB_OUTPUT"
+        workspace_root="$(realpath -m "$GITHUB_WORKSPACE")"
+        source_root="$(resolve_path "$INPUT_SOURCE_ROOT")"
+        output_root="$(resolve_path "$INPUT_OUTPUT_ROOT")"
+
+        if [[ "$output_root" == "$workspace_root" || "$output_root" != "$workspace_root"/* ]]; then
+          echo "output-root must be a child of GITHUB_WORKSPACE: $output_root" >&2
+          exit 2
+        fi
+
+        generated_at="$(git -C "$source_root" show -s --format=%cI "$INPUT_REPOSITORY_REF")"
+        test -n "$generated_at"
+
+        echo "workspace-root=$workspace_root" >> "$GITHUB_OUTPUT"
+        echo "source-root=$source_root" >> "$GITHUB_OUTPUT"
+        echo "output-root=$output_root" >> "$GITHUB_OUTPUT"
+        echo "generated-at=$generated_at" >> "$GITHUB_OUTPUT"
+
+    - name: Build documentation generator
+      shell: bash
+      env:
+        ACTION_ROOT: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        dotnet restore "$ACTION_ROOT/src/GenerateDocuments/GenerateDocuments.csproj"
+        dotnet build \
+          "$ACTION_ROOT/src/GenerateDocuments/GenerateDocuments.csproj" \
+          --configuration Release \
+          --no-restore
 
     - name: Generate Markdown documentation
       shell: bash
@@ -55,15 +82,14 @@ runs:
         REPOSITORY_REF: ${{ inputs.repository-ref }}
       run: |
         set -euo pipefail
-        dotnet run \
-          --project "$ACTION_ROOT/src/GenerateDocuments" \
-          --configuration Release \
-          -- \
+        dotnet "$ACTION_ROOT/src/GenerateDocuments/bin/Release/net8.0/AtspmDocsGenerator.dll" \
+          --workspace-root "${{ steps.paths.outputs.workspace-root }}" \
           --source-root "$SOURCE_ROOT" \
           --output-root "$OUTPUT_ROOT" \
           --map "$ACTION_ROOT/config/container-config-map.json" \
           --repository-url "$REPOSITORY_URL" \
-          --repository-ref "$REPOSITORY_REF"
+          --repository-ref "$REPOSITORY_REF" \
+          --generated-at "${{ steps.paths.outputs.generated-at }}"
 
     - name: Install MkDocs dependencies
       if: inputs.validate-site == 'true'
