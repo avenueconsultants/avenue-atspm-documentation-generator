@@ -10,28 +10,46 @@ public sealed partial class ConfigurationSourceAnalyzer
 {
     private static readonly CSharpParseOptions ParseOptions =
         new(languageVersion: LanguageVersion.Latest, documentationMode: DocumentationMode.Parse);
+    private static readonly Lazy<ImmutableArray<MetadataReference>> PlatformReferences =
+        new(CreatePlatformReferences);
 
     public IReadOnlyDictionary<string, ConfigurationSection> Analyze(
         string sourceRoot,
-        IEnumerable<string> sourcePaths)
+        IEnumerable<string> sourcePaths,
+        IReadOnlyList<ConfigurationTypeRegistration>? registrations = null)
     {
         var normalizedRoot = Path.GetFullPath(sourceRoot);
-        var trees = EnumerateSourceFiles(normalizedRoot, sourcePaths)
+        // Parse independent files concurrently, but keep source order stable for
+        // partial declarations and reproducible output.
+        var trees = SourceFiles.Enumerate(normalizedRoot, sourcePaths)
+            .AsParallel().AsOrdered()
             .Select(file => CSharpSyntaxTree.ParseText(
                 File.ReadAllText(file),
                 ParseOptions,
                 path: file,
                 encoding: Encoding.UTF8))
             .ToArray();
+        var declarations = trees
+            .SelectMany(tree => tree.GetCompilationUnitRoot()
+                .DescendantNodes()
+                .OfType<TypeDeclarationSyntax>())
+            .ToArray();
+        var relevantNames = (registrations ?? [])
+            .Select(item => item.TypeName.Split('.').Last().Split('<')[0])
+            .Concat(declarations.Where(type => type.AttributeLists.SelectMany(list => list.Attributes)
+                .Any(IsConfigurationSectionAttribute)).Select(type => type.Identifier.ValueText))
+            .ToHashSet(StringComparer.Ordinal);
+        if (relevantNames.Count == 0)
+            return new Dictionary<string, ConfigurationSection>(StringComparer.Ordinal);
         var compilation = CSharpCompilation.Create(
             "ConfigurationDocumentationAnalysis",
             trees,
             GetPlatformReferences(),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-        var attributedTypes = trees
-            .SelectMany(tree => tree.GetCompilationUnitRoot()
-                .DescendantNodes()
-                .OfType<TypeDeclarationSyntax>())
+        // Preserve all partial declarations of a relevant type, while avoiding
+        // semantic binding for unrelated classes in broad source folders.
+        var types = declarations
+            .Where(type => relevantNames.Contains(type.Identifier.ValueText))
             .Select(type => new
             {
                 Declaration = type,
@@ -39,26 +57,32 @@ public sealed partial class ConfigurationSourceAnalyzer
                     .FirstOrDefault(IsConfigurationSectionAttribute),
                 Symbol = compilation.GetSemanticModel(type.SyntaxTree).GetDeclaredSymbol(type)
             })
-            .Where(item => item.Attribute is not null && item.Symbol is not null)
+            .Where(item => item.Symbol is not null)
             .GroupBy(item => item.Symbol!, SymbolEqualityComparer.Default)
             .ToArray();
         var sections = new Dictionary<string, ConfigurationSection>(StringComparer.Ordinal);
+        var remaining = (registrations ?? []).ToDictionary(item => item.TypeName, StringComparer.Ordinal);
 
-        foreach (var group in attributedTypes)
+        foreach (var group in types)
         {
-            if (group.Count() > 1)
+            var attributed = group.Where(item => item.Attribute is not null).ToArray();
+            if (attributed.Length > 1)
             {
                 throw new InvalidDataException(
                     $"ConfigurationSection is declared on more than one part of '{group.Key!.ToDisplayString()}'.");
             }
 
-            var item = group.Single();
+            remaining.Remove(group.Key!.ToDisplayString(), out var registration);
+            if (attributed.Length == 0 && registration is null)
+                continue;
+            var item = attributed.FirstOrDefault() ?? group.First();
             var section = CreateSection(
                 item.Symbol!,
                 item.Declaration,
-                item.Attribute!,
+                item.Attribute,
                 compilation,
-                normalizedRoot);
+                normalizedRoot,
+                registration);
             if (!sections.TryAdd(section.SectionName, section))
             {
                 throw new InvalidDataException(
@@ -66,52 +90,30 @@ public sealed partial class ConfigurationSourceAnalyzer
             }
         }
 
+        if (remaining.Count > 0)
+            throw new InvalidDataException("Registered configuration types were not found in sourcePaths: "
+                + string.Join(", ", remaining.Keys.Order(StringComparer.Ordinal))
+                + ". Use exact namespace-qualified C# type names.");
+
         return sections;
-    }
-
-    private static IEnumerable<string> EnumerateSourceFiles(
-        string sourceRoot,
-        IEnumerable<string> sourcePaths)
-    {
-        var files = new SortedSet<string>(StringComparer.Ordinal);
-        foreach (var sourcePath in sourcePaths)
-        {
-            var fullPath = SourcePath.ResolveWithinRoot(sourceRoot, sourcePath, "Configured source path");
-            if (!Directory.Exists(fullPath))
-            {
-                throw new DirectoryNotFoundException($"Configured source path does not exist: {fullPath}");
-            }
-
-            foreach (var file in Directory.EnumerateFiles(fullPath, "*.cs", SearchOption.AllDirectories))
-            {
-                var relativePath = Path.GetRelativePath(sourceRoot, file);
-                if (relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                    .Any(part => part is ".git" or "bin" or "obj"))
-                {
-                    continue;
-                }
-
-                files.Add(Path.GetFullPath(file));
-            }
-        }
-
-        return files;
     }
 
     private static ConfigurationSection CreateSection(
         INamedTypeSymbol typeSymbol,
         TypeDeclarationSyntax attributedDeclaration,
-        AttributeSyntax attribute,
+        AttributeSyntax? attribute,
         CSharpCompilation compilation,
-        string sourceRoot)
+        string sourceRoot,
+        ConfigurationTypeRegistration? registration)
     {
-        var arguments = attribute.ArgumentList?.Arguments ?? default;
-        var sectionArgument = FindArgument(arguments, "sectionName", 0)
-            ?? throw new InvalidDataException(
-                $"ConfigurationSection on '{typeSymbol.ToDisplayString()}' does not define a section name.");
-        var sectionName = ReadSectionName(sectionArgument.Expression);
+        var arguments = attribute?.ArgumentList?.Arguments ?? default;
+        var sectionArgument = FindArgument(arguments, "sectionName", 0);
+        var sectionName = registration?.SectionName ?? (sectionArgument is not null
+            ? ReadSectionName(sectionArgument.Expression)
+            : throw new InvalidDataException($"ConfigurationSection on '{typeSymbol.ToDisplayString()}' does not define a section name."));
         var descriptionArgument = FindArgument(arguments, "description", 1);
-        var description = descriptionArgument is null ? null : ReadOptionalString(descriptionArgument.Expression);
+        var description = registration?.Description
+            ?? (descriptionArgument is null ? null : ReadOptionalString(descriptionArgument.Expression));
         var properties = GetDocumentedProperties(typeSymbol)
             .Select(property => CreateProperty(
                 property.Symbol,
@@ -284,7 +286,9 @@ public sealed partial class ConfigurationSourceAnalyzer
         return (type, false, false);
     }
 
-    private static ImmutableArray<MetadataReference> GetPlatformReferences()
+    private static ImmutableArray<MetadataReference> GetPlatformReferences() => PlatformReferences.Value;
+
+    private static ImmutableArray<MetadataReference> CreatePlatformReferences()
     {
         var assemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string
             ?? throw new InvalidOperationException("Trusted platform assemblies are unavailable.");

@@ -1,0 +1,26 @@
+{
+  "$schema": "./container-config-map.schema.json",
+  "schemaVersion": 2,
+  "productName": "Example Utility",
+  "site": {
+    "siteName": "Example Utility Documentation",
+    "exportFilePrefix": "example-utility"
+  },
+  "sourcePaths": ["src/Configuration"],
+  "logMessages": {
+    "sourcePaths": ["src/Logging"],
+    "description": "Log events declared by Example Utility.",
+    "allowedDuplicateEventIds": []
+  },
+  "examples": {
+    "propertyValues": { "Host": "localhost" },
+    "typeValues": {}
+  },
+  "containers": [
+    {
+      "name": "Example Utility",
+      "slug": "example-utility",
+      "sections": ["UtilityOptions"]
+    }
+  ]
+}

@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - feature/generic-documentation-test
   workflow_dispatch:
 
 permissions:
@@ -21,8 +22,8 @@ jobs:
       - name: Check out ATSPM fixture source
         uses: actions/checkout@v6
         with:
-          repository: avenueconsultants/udot-atspm-development
-          ref: 9b486193ab586060f741c04087b2383c62d5e56c
+          repository: opensourcetransportation/atspm
+          ref: main
           path: _source
 
       - name: Resolve fixture source commit
@@ -44,12 +45,16 @@ jobs:
       - name: Test generator
         run: dotnet test GenerateDocuments.sln --configuration Release
 
+      - name: Test consumer configuration path resolution
+        run: bash scripts/test-config-path.sh
+
       - name: Exercise repository action
         uses: ./
         with:
           source-root: _source
+          config-file: ${{ github.workspace }}/config/container-config-map.json
           output-root: _generated
-          repository-url: https://github.com/avenueconsultants/udot-atspm-development
+          repository-url: https://github.com/opensourcetransportation/atspm
           repository-ref: ${{ steps.source.outputs.sha }}
 
       - name: Verify expected output
@@ -58,7 +63,7 @@ jobs:
           set -euo pipefail
           mapfile -t expected < <(
             jq -r '.containers[].slug + ".md"' config/container-config-map.json
-            printf '%s\n' index.md log-messages.md
+            printf '%s\n' index.md log-messages.md configuration-changes.md configuration-templates.md
           )
 
           for file in "${expected[@]}"; do
@@ -67,6 +72,77 @@ jobs:
 
           test "$(find _generated -maxdepth 1 -type f -name '*.md' | wc -l)" -eq "${#expected[@]}"
           test -s "_generated/.atspm-docs-generator.json"
+          test -s "_generated/configuration-snapshot.json"
+          jq -r '.containers[].slug' config/container-config-map.json | while read -r slug; do
+            test -s "_generated/$slug.example.json"
+            test -s "_generated/$slug.env.example"
+          done
+
+      - name: Prepare consumer-owned configuration
+        shell: bash
+        run: |
+          cp config/container-config-map.json _source/documentation.json
+
+      - name: Exercise consumer-owned configuration
+        uses: ./
+        with:
+          source-root: _source
+          config-file: documentation.json
+          output-root: _generated-consumer
+          repository-url: https://github.com/opensourcetransportation/atspm
+          repository-ref: ${{ steps.source.outputs.sha }}
+
+      - name: Compare legacy and consumer-owned outputs
+        run: diff -r _generated _generated-consumer
+
+      - name: Test site generation and staged PR preparation
+        run: python -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Verify repository configuration consistency
         run: python scripts/validate_repository.py
+
+      - name: Check out pinned Data Downloader integration source
+        uses: actions/checkout@v6
+        with:
+          repository: opensourcetransportation/atspm-data-downloader
+          ref: 51d563383e15f7b90ab2b3abb91d1b2c39aafeac
+          path: _source/data-downloader
+          persist-credentials: false
+
+      - name: Verify Data Downloader integration and automatic discovery
+        run: python scripts/check_data_downloader.py --source-root _source/data-downloader
+
+      - name: Check out pinned ATSPM development source
+        uses: actions/checkout@v6
+        with:
+          repository: avenueconsultants/udot-atspm-development
+          ref: 82bc9983533671a00d92532289c438e54a5f60e5
+          path: _source/atspm-baseline
+          persist-credentials: false
+
+      - name: Verify ATSPM consumer map coverage and preserved output
+        run: |
+          dotnet src/GenerateDocuments/bin/Release/net8.0/AtspmDocsGenerator.dll check --source-root _source/atspm-baseline --map "$GITHUB_WORKSPACE/integration/atspm/documentation.json"
+          python scripts/check_baseline.py --source-root _source/atspm-baseline --map integration/atspm/documentation.json
+
+      - name: Check out pinned Speed Listener source
+        uses: actions/checkout@v6
+        with:
+          repository: opensourcetransportation/atspm-speed-listener
+          ref: 7f94a674769af2ef715342c53ad18447a01ab3d6
+          path: _source/speed-listener
+          persist-credentials: false
+
+      - name: Verify Speed Listener bindings, defaults and site
+        run: python scripts/check_speed_listener.py --source-root _source/speed-listener
+
+      - name: Check out pinned Data Migration source
+        uses: actions/checkout@v6
+        with:
+          repository: opensourcetransportation/ATSPM-43-to-5-Data-Migration
+          ref: cc29cf943d54a4c6de9373442e05f93cbe9f8f10
+          path: _source/data-migration
+          persist-credentials: false
+
+      - name: Verify Data Migration configuration and site
+        run: python scripts/check_data_migration.py --source-root _source/data-migration

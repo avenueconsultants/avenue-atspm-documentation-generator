@@ -6,6 +6,8 @@ public static class Program
 {
     public static int Main(string[] args)
     {
+        if (args.FirstOrDefault() is "init" or "check" or "sync")
+            return SetupCommands.Run(args);
         var parseResult = CliOptions.Parse(args);
 
         if (parseResult.ShowHelp)
@@ -27,13 +29,14 @@ public static class Program
             var options = parseResult.Options;
             var map = DocumentationMapLoader.Load(options.MapPath);
             GeneratedOutputPolicy.ValidateExisting(options.OutputRoot, map);
-            var sections = new ConfigurationSourceAnalyzer().Analyze(
+            var previousSnapshot = ConfigurationChangeGenerator.LoadPrevious(options.OutputRoot);
+            var sections = ConfigurationDiscovery.Analyze(options.SourceRoot, map);
+            var snapshot = ConfigurationChangeGenerator.Capture(map, sections, options, previousSnapshot);
+            var logMessages = map.LogMessages.Enabled ? new LogMessageSourceAnalyzer().Analyze(
                 options.SourceRoot,
-                map.SourcePaths);
-            var logMessages = new LogMessageSourceAnalyzer().Analyze(
-                options.SourceRoot,
-                map.LogMessages.SourcePath,
-                map.LogMessages.AllowedDuplicateEventIds.ToHashSet());
+                map.LogMessages.GetSourcePaths(),
+                map.LogMessages.AllowedDuplicateEventIds.ToHashSet(),
+                map.LogMessages.IncludeOrdinaryCalls) : [];
             GenerationResult? result = null;
             LogMessageGenerationResult? logResult = null;
 
@@ -44,27 +47,30 @@ public static class Program
                     map,
                     sections,
                     stagingOptions);
-                logResult = new LogMessageDocumentationGenerator().Generate(
+                ConfigurationTemplateGenerator.Generate(map, sections, stagingRoot);
+                if (map.LogMessages.Enabled)
+                    logResult = new LogMessageDocumentationGenerator().Generate(
                     logMessages,
                     Path.Combine(stagingRoot, "log-messages.md"),
                     stagingOptions,
                     map.LogMessages.Description);
                 GeneratedOutputPolicy.WriteManifest(stagingRoot, map);
+                ConfigurationChangeGenerator.Write(stagingRoot, snapshot);
             });
 
             Console.WriteLine(
                 $"Generated {result!.PageCount} container pages from " +
                 $"{result.DocumentedSectionCount} configuration sections.");
-            Console.WriteLine(
-                $"Generated a log message reference containing {logResult!.MessageCount} messages " +
-                $"({logResult.DuplicateEventIdCount} duplicated event IDs).");
+            if (logResult is not null)
+                Console.WriteLine(
+                    $"Generated a log message reference containing {logResult.MessageCount} messages " +
+                    $"({logResult.DuplicateEventIdCount} duplicated event IDs).");
+            Console.WriteLine(ReferenceEquals(snapshot, previousSnapshot)
+                ? "Configuration unchanged; retained the previous snapshot and comparison."
+                : previousSnapshot is null ? "Established the initial configuration baseline."
+                : $"Recorded {snapshot.Report.Changes.Count} configuration change entries.");
 
-            var mappedSections = map.Containers
-                .SelectMany(container => container.Sections)
-                .Select(MappedSectionName.GetBaseName)
-                .ToHashSet(StringComparer.Ordinal);
-
-            foreach (var section in sections.Keys.Except(mappedSections).Order(StringComparer.Ordinal))
+            foreach (var section in ConfigurationDiscovery.Unmapped(map, sections))
             {
                 Console.WriteLine($"Warning: configuration section '{section}' is not mapped to a container.");
             }

@@ -1,0 +1,4 @@
+# Preserve the bytes covered by vendor checksums and regression snapshots.
+overrides/assets/vendor/** text eol=lf
+tests/baselines/** text eol=lf
+scripts/*.sh text eol=lf

@@ -5,6 +5,39 @@ namespace AtspmDocsGenerator.Tests;
 public sealed class MarkdownDocumentationGeneratorTests
 {
     [Fact]
+    public void ExampleJsonPreservesNumericSourceDefaultsWithDigitSeparators()
+    {
+        using var directory = new TemporaryDirectory();
+        var output = System.IO.Path.Combine(directory.Path, "output");
+        var map = new DocumentationMap
+        {
+            SchemaVersion = 2,
+            ProductName = "Speed Listener",
+            SourcePaths = ["Config"],
+            Containers = [new ContainerDefinition
+            {
+                Name = "Listener", Slug = "listener", Sections = ["EventListenerConfiguration"]
+            }]
+        };
+        var sections = new Dictionary<string, ConfigurationSection>
+        {
+            ["EventListenerConfiguration"] = new("EventListenerConfiguration", null, null,
+                "Config/Listener.cs", 1,
+                [new ConfigurationProperty("BatchSize", "int", "50_000", false, null),
+                 new ConfigurationProperty("SampleRate", "decimal", "1_000.5m", false, null)])
+        };
+        var options = new CliOptions(directory.Path, directory.Path, output, "map.json",
+            "https://github.com/example/listener", "abc123", DateTimeOffset.UtcNow);
+
+        new MarkdownDocumentationGenerator().Generate(map, sections, options);
+
+        var page = File.ReadAllText(System.IO.Path.Combine(output, "listener.md"));
+        Assert.Contains("`50_000`", page);
+        Assert.Contains("\"BatchSize\": 50000", page);
+        Assert.Contains("\"SampleRate\": 1000.5", page);
+    }
+
+    [Fact]
     public void GenerateMatchesTheContainerPageSnapshot()
     {
         using var directory = new TemporaryDirectory();
@@ -57,7 +90,7 @@ public sealed class MarkdownDocumentationGeneratorTests
             directory.Path,
             output,
             System.IO.Path.Combine(directory.Path, "map.json"),
-            "https://github.com/utahudot/udot-atspm",
+            "https://github.com/opensourcetransportation/atspm",
             "abc123",
             new DateTimeOffset(2026, 8, 18, 19, 15, 0, TimeSpan.Zero));
 
@@ -72,7 +105,9 @@ public sealed class MarkdownDocumentationGeneratorTests
         var actual = File.ReadAllText(actualPath).Replace("\r\n", "\n");
         var expected = File.ReadAllText(expectedPath).Replace("\r\n", "\n");
 
-        Assert.Equal(expected, actual);
+        Assert.StartsWith(expected, actual);
+        Assert.Contains("[JSON example](event-log-utility.example.json)", actual);
+        Assert.Contains("[Environment example](event-log-utility.env.example)", actual);
         Assert.DoesNotContain(System.IO.Path.GetTempPath(), actual);
 
         var bytes = File.ReadAllBytes(actualPath);

@@ -13,24 +13,22 @@ public sealed partial class LogMessageSourceAnalyzer
     public IReadOnlyList<LogMessageDefinition> Analyze(
         string sourceRoot,
         string sourcePath,
-        IReadOnlySet<int>? allowedDuplicateEventIds = null)
+        IReadOnlySet<int>? allowedDuplicateEventIds = null,
+        bool includeOrdinaryCalls = false)
+        => Analyze(sourceRoot, new[] { sourcePath }, allowedDuplicateEventIds, includeOrdinaryCalls);
+
+    public IReadOnlyList<LogMessageDefinition> Analyze(
+        string sourceRoot,
+        IEnumerable<string> sourcePaths,
+        IReadOnlySet<int>? allowedDuplicateEventIds = null,
+        bool includeOrdinaryCalls = false)
     {
         var normalizedRoot = Path.GetFullPath(sourceRoot);
-        var fullSourcePath = SourcePath.ResolveWithinRoot(
-            normalizedRoot,
-            sourcePath,
-            "Log message source path");
-
-        if (!Directory.Exists(fullSourcePath))
-        {
-            throw new DirectoryNotFoundException(
-                $"Log message source path does not exist: {fullSourcePath}");
-        }
+        var files = SourceFiles.Enumerate(normalizedRoot, sourcePaths);
 
         var messages = new List<LogMessageDefinition>();
 
-        foreach (var file in Directory.EnumerateFiles(fullSourcePath, "*.cs", SearchOption.AllDirectories)
-                     .Order(StringComparer.Ordinal))
+        foreach (var file in files.Order(StringComparer.Ordinal))
         {
             var tree = CSharpSyntaxTree.ParseText(
                 File.ReadAllText(file),
@@ -50,13 +48,20 @@ public sealed partial class LogMessageSourceAnalyzer
                     messages.Add(CreateDefinition(method, attribute, normalizedRoot));
                 }
             }
+            if (includeOrdinaryCalls)
+            {
+                foreach (var call in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
+                    if (CreateOrdinaryDefinition(call, normalizedRoot) is { } definition)
+                        messages.Add(definition);
+            }
         }
 
         var unexpectedDuplicates = messages
+            .Where(message => message.EventId is not null)
             .GroupBy(message => message.EventId)
             .Where(group => group.Count() > 1
-                && !(allowedDuplicateEventIds?.Contains(group.Key) ?? false))
-            .Select(group => group.Key)
+                && !(allowedDuplicateEventIds?.Contains(group.Key!.Value) ?? false))
+            .Select(group => group.Key!.Value)
             .Order()
             .ToArray();
         if (unexpectedDuplicates.Length > 0)
@@ -66,10 +71,47 @@ public sealed partial class LogMessageSourceAnalyzer
         }
 
         return messages
-            .OrderBy(message => message.EventId)
+            .OrderBy(message => message.EventId is null ? 1 : 0)
+            .ThenBy(message => message.EventId)
             .ThenBy(message => message.EventName, StringComparer.Ordinal)
             .ThenBy(message => message.SourcePath, StringComparer.Ordinal)
+            .ThenBy(message => message.SourceLine)
             .ToArray();
+    }
+
+    private static LogMessageDefinition? CreateOrdinaryDefinition(
+        InvocationExpressionSyntax call, string sourceRoot)
+    {
+        if (call.Expression is not MemberAccessExpressionSyntax access)
+            return null;
+        var method = access.Name.Identifier.ValueText;
+        if (method is not ("LogInformation" or "LogWarning" or "LogError" or "LogDebug"
+            or "LogTrace" or "LogCritical"))
+            return null;
+        var receiver = access.Expression.ToString().Split('.').Last().TrimStart('_');
+        if (!receiver.Contains("log", StringComparison.OrdinalIgnoreCase))
+            return null;
+        // Ordinary ILogger calls have no declaration-level EventId. Capture only
+        // source-authored literal templates. Runtime-computed strings are unknown.
+        var template = call.ArgumentList.Arguments.Select(argument => argument.Expression)
+            .FirstOrDefault(expression => expression is InterpolatedStringExpressionSyntax
+                || expression is LiteralExpressionSyntax literal
+                    && literal.IsKind(SyntaxKind.StringLiteralExpression));
+        if (template is null) return null;
+        var summary = template switch
+        {
+            LiteralExpressionSyntax literal => literal.Token.ValueText,
+            InterpolatedStringExpressionSyntax interpolated => string.Concat(interpolated.Contents.Select(content => content switch
+            {
+                InterpolatedStringTextSyntax text => text.TextToken.ValueText,
+                InterpolationSyntax value => $"{{{value.Expression}}}",
+                _ => string.Empty
+            })),
+            _ => string.Empty
+        };
+        var relative = Path.GetRelativePath(sourceRoot, call.SyntaxTree.FilePath).Replace('\\', '/');
+        var line = call.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        return new LogMessageDefinition(null, method, method[3..], summary, relative, line);
     }
 
     private static LogMessageDefinition CreateDefinition(

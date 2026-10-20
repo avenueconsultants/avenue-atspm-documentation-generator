@@ -1,9 +1,16 @@
+# Build and test output.
 **/bin/
 **/obj/
-.vs/
+/.vs/
 *.suo
 *.user
 TestResults/
-site/build/
-_generated/
-_source/
+
+# Local documentation previews and checked-out consumer repositories.
+/site/build/
+/_generated/
+/_generated-consumer/
+/_source/
+
+# Python bytecode.
+__pycache__/

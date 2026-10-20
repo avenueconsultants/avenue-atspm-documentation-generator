@@ -1,0 +1,13 @@
+{
+  "$schema": "./container-config-map.schema.json",
+  "schemaVersion": 2,
+  "productName": "Example Utility",
+  "sourcePaths": ["src"],
+  "containers": [
+    {
+      "name": "Example Utility",
+      "slug": "example-utility",
+      "autoDiscover": true
+    }
+  ]
+}

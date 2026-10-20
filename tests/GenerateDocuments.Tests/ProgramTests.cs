@@ -1,7 +1,44 @@
 namespace AtspmDocsGenerator.Tests;
 
+[Collection("Console commands")]
 public sealed class ProgramTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DisablingOrOmittingLogsRemovesPreviousManagedLogPage(bool omit)
+    {
+        using var directory = new TemporaryDirectory();
+        directory.WriteFile("Config/Options.cs", """
+            [ConfigurationSection("Utility")]
+            public class Options { public int Port { get; set; } = 123; }
+            """);
+        directory.WriteFile("Logs/Events.cs", "// no log events required");
+        var map = System.Text.Json.Nodes.JsonNode.Parse("""
+            {
+              "schemaVersion": 2, "productName": "Utility", "sourcePaths": ["Config"],
+              "logMessages": { "sourcePaths": ["Logs"], "description": "Events" },
+              "containers": [{ "name": "Utility", "slug": "utility", "sections": ["Utility"] }]
+            }
+            """)!;
+        var path = directory.WriteFile("documentation.json", map.ToJsonString());
+        var output = System.IO.Path.Combine(directory.Path, "output");
+        string[] args = ["--workspace-root", directory.Path, "--source-root", directory.Path,
+            "--output-root", output, "--map", path, "--repository-url", "https://github.com/example/utility",
+            "--repository-ref", "abc123", "--generated-at", "2026-09-29T00:00:00Z"];
+        Assert.Equal(0, Program.Main(args));
+        Assert.True(File.Exists(System.IO.Path.Combine(output, "log-messages.md")));
+        if (omit)
+            map.AsObject().Remove("logMessages");
+        else
+            map["logMessages"] = System.Text.Json.Nodes.JsonNode.Parse("""{"enabled":false,"sourcePath":"does-not-exist"}""");
+        File.WriteAllText(path, map.ToJsonString());
+        Assert.Equal(0, Program.Main(args));
+        Assert.False(File.Exists(System.IO.Path.Combine(output, "log-messages.md")));
+        Assert.DoesNotContain("log-messages", File.ReadAllText(System.IO.Path.Combine(output, "index.md")));
+        Assert.DoesNotContain("log-messages", File.ReadAllText(System.IO.Path.Combine(output, GeneratedOutputPolicy.ManifestFileName)));
+    }
+
     [Fact]
     public void MainReturnsExpectedHelpAndParseErrorCodes()
     {
@@ -65,7 +102,7 @@ public sealed class ProgramTests
             }
             """);
         var mapPath = directory.WriteFile(
-            "map.json",
+            "source/documentation.json",
             """
             {
               "schemaVersion": 2,
