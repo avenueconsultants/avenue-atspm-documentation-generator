@@ -1,0 +1,13 @@
+{
+  "Generator": "atspm-documentation-generator",
+  "ManagedFiles": [
+    "config-api.md",
+    "data-api.md",
+    "event-log-utility.md",
+    "identity-api.md",
+    "index.md",
+    "log-messages.md",
+    "report-api.md",
+    "watchdog.md"
+  ]
+}

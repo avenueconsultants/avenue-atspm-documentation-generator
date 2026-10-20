@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 2,
+  "productName": "ATSPM",
+  "site": {
+    "siteDescription": "Generated configuration reference for the ATSPM platform",
+    "copyright": "Copyright Utah Department of Transportation"
+  },
+  "sourcePaths": [
+    "Atspm/Infrastructure/Configuration",
+    "Atspm/Data/Enums"
+  ],
+  "logMessages": {
+    "sourcePath": "Atspm/Infrastructure/LogMessages",
+    "description": "Logger messages declared in `Utah.Udot.Atspm.Infrastructure.LogMessages`, sorted by event ID.",
+    "allowedDuplicateEventIds": [
+      201,
+      202,
+      203,
+      1000,
+      1001,
+      1002,
+      1003,
+      9001
+    ]
+  },
+  "examples": {
+    "propertyValues": {
+      "Database": "atspm",
+      "User": "atspm",
+      "UserName": "atspm",
+      "Audience": "atspm",
+      "ClientId": "atspm",
+      "DefaultEmailAddress": "atspm@example.com",
+      "Website": "https://atspm.example.com"
+    },
+    "typeValues": {
+      "RepositoryConfiguration": {
+        "Provider": "PostgreSql",
+        "ConnectionString": "Host=localhost;Port=5432;Database=atspm;Username=atspm;Password=replace-with-a-secret"
+      }
+    }
+  },
+  "containers": [
+    {
+      "name": "Config API",
+      "slug": "config-api",
+      "sections": [
+        "DatabaseConfiguration:ConfigContext",
+        "DatabaseConfiguration:AggregationContext",
+        "DatabaseConfiguration:EventLogContext",
+        "DatabaseConfiguration:IdentityContext",
+        "Jwt",
+        "Oidc",
+        "GitHubReleaseConfiguration"
+      ]
+    },
+    {
+      "name": "Data API",
+      "slug": "data-api",
+      "sections": [
+        "DatabaseConfiguration:ConfigContext",
+        "DatabaseConfiguration:AggregationContext",
+        "DatabaseConfiguration:EventLogContext",
+        "DatabaseConfiguration:IdentityContext",
+        "Jwt",
+        "Oidc"
+      ]
+    },
+    {
+      "name": "Identity API",
+      "slug": "identity-api",
+      "sections": [
+        "DatabaseConfiguration:ConfigContext",
+        "DatabaseConfiguration:AggregationContext",
+        "DatabaseConfiguration:EventLogContext",
+        "DatabaseConfiguration:IdentityContext",
+        "Jwt",
+        "Oidc",
+        "IdentityConfiguration"
+      ]
+    },
+    {
+      "name": "Report API",
+      "slug": "report-api",
+      "sections": [
+        "DatabaseConfiguration:ConfigContext",
+        "DatabaseConfiguration:AggregationContext",
+        "DatabaseConfiguration:EventLogContext",
+        "DatabaseConfiguration:IdentityContext",
+        "Jwt",
+        "Oidc"
+      ]
+    },
+    {
+      "name": "Event Log Utility",
+      "slug": "event-log-utility",
+      "sections": [
+        "DatabaseConfiguration:ConfigContext",
+        "DatabaseConfiguration:AggregationContext",
+        "DatabaseConfiguration:EventLogContext",
+        "DatabaseConfiguration:IdentityContext",
+        "DecodeEventsConfiguration",
+        "DeviceDownloaderConfiguration",
+        "DeviceEventLoggingConfiguration",
+        "EventLogAggregateConfiguration",
+        "EventLogExtractConfiguration",
+        "EventLogImporterConfiguration",
+        "EventLogTransferOptions"
+      ]
+    },
+    {
+      "name": "Watchdog",
+      "slug": "watchdog",
+      "sections": [
+        "DatabaseConfiguration:ConfigContext",
+        "DatabaseConfiguration:AggregationContext",
+        "DatabaseConfiguration:EventLogContext",
+        "DatabaseConfiguration:IdentityContext",
+        "WatchdogConfiguration"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 2,
+  "productName": "ATSPM Speed Listener",
+  "sourcePaths": ["SpeedListener/SpeedListener"],
+  "site": {
+    "siteName": "ATSPM Speed Listener Documentation",
+    "siteDescription": "Emitter and declared listener configuration, structured events, and change reports.",
+    "exportFilePrefix": "atspm-speed-listener"
+  },
+  "logMessages": {
+    "sourcePaths": ["SpeedListener/SpeedListener/LogMessages"],
+    "description": "Structured events declared by the speed emitter. The listener currently declares no LoggerMessage events.",
+    "allowedDuplicateEventIds": []
+  },
+  "examples": {
+    "propertyValues": {
+      "ListenerHost": "127.0.0.1",
+      "ApiBaseUrl": "https://data-api.example/",
+      "ApiEndPoint": "https://data-api.example/REPLACE_WITH_ENDPOINT"
+    }
+  },
+  "containers": [
+    {
+      "name": "Event Listener (declared configuration)",
+      "slug": "event-listener",
+      "sections": ["EventListenerConfiguration"]
+    },
+    {
+      "name": "Speed Emitter",
+      "slug": "speed-emitter",
+      "sections": ["SpeedEmitterConfiguration"]
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import yaml
+from site_configuration import configure_site
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,9 @@ def validate_navigation() -> None:
         (ROOT / "mkdocs.yml").read_text(encoding="utf-8"),
         Loader=MkDocsLoader,
     )
+    if "scripts/site_configuration.py" not in mkdocs.get("hooks", []):
+        raise SystemExit("MkDocs must enable the shared documentation configuration hook.")
+    mkdocs = configure_site(mkdocs, documentation_map)
     container_group = next(
         item["Containers"] for item in mkdocs["nav"] if "Containers" in item
     )

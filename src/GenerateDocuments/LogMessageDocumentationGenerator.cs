@@ -15,6 +15,7 @@ public sealed class LogMessageDocumentationGenerator
         string sourceDescription)
     {
         var duplicateEventIdCount = messages
+            .Where(message => message.EventId is not null)
             .GroupBy(message => message.EventId)
             .Count(group => group.Count() > 1);
         var builder = new StringBuilder();
@@ -45,9 +46,11 @@ public sealed class LogMessageDocumentationGenerator
         builder.AppendLine("| ---: | --- | --- | --- | --- |");
 
         foreach (var message in messages
-                     .OrderBy(message => message.EventId)
+                     .OrderBy(message => message.EventId is null ? 1 : 0)
+                     .ThenBy(message => message.EventId)
                      .ThenBy(message => message.EventName, StringComparer.Ordinal)
-                     .ThenBy(message => message.SourcePath, StringComparer.Ordinal))
+                     .ThenBy(message => message.SourcePath, StringComparer.Ordinal)
+                     .ThenBy(message => message.SourceLine))
         {
             var sourceUrl = BuildRepositoryUrl(
                 options.RepositoryUrl,
@@ -55,7 +58,7 @@ public sealed class LogMessageDocumentationGenerator
                 options.RepositoryRef,
                 message.SourcePath) + $"#L{message.SourceLine}";
             builder.AppendLine(
-                $"| `{message.EventId}` " +
+                $"| {(message.EventId is null ? "—" : $"`{message.EventId}`")} " +
                 $"| {EscapeTableText(message.EventName)} " +
                 $"| {CodeSpan(message.Level)} " +
                 $"| {EscapeTableText(message.Summary ?? string.Empty)} " +

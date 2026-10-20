@@ -14,7 +14,7 @@ Configuration options available to the **Event Log Utility** container.
 
 Options used by the sample utility.
 
-[View source](https://github.com/utahudot/udot-atspm/blob/abc123/Atspm/Infrastructure/Configuration/SampleOptions.cs#L10)
+[View source](https://github.com/opensourcetransportation/atspm/blob/abc123/Atspm/Infrastructure/Configuration/SampleOptions.cs#L10)
 
 | Setting | Type | Default | Required | Options | Environment variable | Description |
 | --- | --- | --- | --- | --- | --- | --- |

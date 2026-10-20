@@ -45,6 +45,8 @@ internal static class GeneratedOutputPolicy
             {
                 throw new InvalidDataException($"Output root has an unrecognized ownership manifest: {manifestPath}");
             }
+            if (manifest.ManagedFiles is null || manifest.ManagedFiles.Any(string.IsNullOrWhiteSpace))
+                throw new InvalidDataException($"Output root has an invalid managed file list: {manifestPath}");
 
             var allowed = manifest.ManagedFiles.Append(ManifestFileName).ToHashSet(StringComparer.Ordinal);
             var foreign = actualFiles.Where(file => !allowed.Contains(file)).ToArray();
@@ -58,7 +60,16 @@ internal static class GeneratedOutputPolicy
         }
 
         var expected = GetManagedFiles(map).Order(StringComparer.Ordinal).ToArray();
-        if (!actualFiles.SequenceEqual(expected, StringComparer.Ordinal))
+        var legacy = map.Containers.Select(container => $"{container.Slug}.md")
+            .Append("index.md")
+            .Concat(map.LogMessages.Enabled ? new[] { "log-messages.md" } : [])
+            .Order(StringComparer.Ordinal).ToArray();
+        var previous = legacy.Append(ConfigurationChangeGenerator.ReportFileName)
+            .Append(ConfigurationChangeGenerator.SnapshotFileName)
+            .Order(StringComparer.Ordinal).ToArray();
+        if (!actualFiles.SequenceEqual(expected, StringComparer.Ordinal)
+            && !actualFiles.SequenceEqual(previous, StringComparer.Ordinal)
+            && !actualFiles.SequenceEqual(legacy, StringComparer.Ordinal))
         {
             throw new InvalidDataException(
                 $"Existing output root is not empty and has no generator ownership manifest: {outputRoot}");
@@ -68,14 +79,21 @@ internal static class GeneratedOutputPolicy
     public static void WriteManifest(string outputRoot, DocumentationMap map)
     {
         var manifest = new GeneratedOutputManifest(GeneratorId, GetManagedFiles(map));
-        var json = JsonSerializer.Serialize(manifest, SerializerOptions) + "\n";
+        var json = DocumentationText.NormalizeLineEndings(JsonSerializer.Serialize(manifest, SerializerOptions)) + "\n";
         File.WriteAllText(Path.Combine(outputRoot, ManifestFileName), json);
     }
 
     private static IReadOnlyList<string> GetManagedFiles(DocumentationMap map) =>
         map.Containers.Select(container => $"{container.Slug}.md")
+            .Concat(map.Containers.SelectMany(container => new[]
+            {
+                $"{container.Slug}.example.json", $"{container.Slug}.env.example"
+            }))
             .Append("index.md")
-            .Append("log-messages.md")
+            .Append("configuration-templates.md")
+            .Append(ConfigurationChangeGenerator.ReportFileName)
+            .Append(ConfigurationChangeGenerator.SnapshotFileName)
+            .Concat(map.LogMessages.Enabled ? new[] { "log-messages.md" } : [])
             .Order(StringComparer.Ordinal)
             .ToArray();
 

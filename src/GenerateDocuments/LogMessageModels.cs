@@ -1,7 +1,7 @@
 namespace AtspmDocsGenerator;
 
 public sealed record LogMessageDefinition(
-    int EventId,
+    int? EventId,
     string EventName,
     string Level,
     string? Summary,

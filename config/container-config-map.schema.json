@@ -1,14 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "ATSPM documentation container map",
+  "title": "Documentation generator configuration (version 2)",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schemaVersion",
     "productName",
     "sourcePaths",
-    "logMessages",
-    "examples",
     "containers"
   ],
   "properties": {
@@ -36,24 +34,96 @@
     "logMessages": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sourcePath", "description", "allowedDuplicateEventIds"],
       "properties": {
-        "sourcePath": { "type": "string", "minLength": 1, "pattern": "\\S" },
-        "description": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "includeOrdinaryCalls": {
+          "type": "boolean",
+          "default": false
+        },
+        "sourcePath": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
         "allowedDuplicateEventIds": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "type": "integer" }
+          "items": {
+            "type": "integer"
+          }
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "sourcePaths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": false
+              }
+            },
+            "required": [
+              "enabled"
+            ]
+          },
+          "then": {},
+          "else": {
+            "required": [
+              "description"
+            ],
+            "oneOf": [
+              {
+                "required": [
+                  "sourcePath"
+                ],
+                "not": {
+                  "required": [
+                    "sourcePaths"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "sourcePaths"
+                ],
+                "not": {
+                  "required": [
+                    "sourcePath"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
     },
     "examples": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["propertyValues", "typeValues"],
       "properties": {
-        "propertyValues": { "type": "object" },
-        "typeValues": { "type": "object" }
+        "propertyValues": {
+          "type": "object"
+        },
+        "typeValues": {
+          "type": "object"
+        }
       }
     },
     "containers": {
@@ -64,8 +134,7 @@
         "additionalProperties": false,
         "required": [
           "name",
-          "slug",
-          "sections"
+          "slug"
         ],
         "properties": {
           "name": {
@@ -75,20 +144,141 @@
           },
           "slug": {
             "type": "string",
-            "pattern": "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$"
+            "pattern": "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+            "not": {
+              "pattern": "^([iI][nN][dD][eE][xX]|[lL][oO][gG]-[mM][eE][sS][sS][aA][gG][eE][sS]|[cC][oO][nN][fF][iI][gG][uU][rR][aA][tT][iI][oO][nN]-[cC][hH][aA][nN][gG][eE][sS])$"
+            }
           },
           "sections": {
             "type": "array",
             "description": "Ordered configuration section names. Use SectionName:NestedPath for named or nested configuration bindings.",
-            "minItems": 1,
             "uniqueItems": true,
             "items": {
               "type": "string",
               "minLength": 1,
               "pattern": "\\S"
             }
+          },
+          "autoDiscover": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "autoDiscover": {
+                  "const": true
+                }
+              },
+              "required": [
+                "autoDiscover"
+              ]
+            },
+            "then": {},
+            "else": {
+              "required": [
+                "sections"
+              ],
+              "properties": {
+                "sections": {
+                  "minItems": 1
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "site": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "siteName": {
+          "type": "string"
+        },
+        "siteDescription": {
+          "type": "string"
+        },
+        "siteUrl": {
+          "type": "string",
+          "pattern": "^$|^https?://"
+        },
+        "copyright": {
+          "type": "string"
+        },
+        "exportFilePrefix": {
+          "type": "string",
+          "pattern": "^$|^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$"
+        },
+        "logReferenceTitle": {
+          "type": "string"
+        }
+      }
+    },
+    "configurationTypes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "typeName",
+          "sectionName"
+        ],
+        "properties": {
+          "typeName": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "sectionName": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
+      }
+    },
+    "excludedSections": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      }
+    },
+    "excludedProperties": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "propertyDescriptions": {
+      "type": "object",
+      "propertyNames": { "type": "string", "minLength": 1, "pattern": "\\S" },
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "additionalProperties": { "type": "string", "minLength": 1, "pattern": "\\S" }
       }
     }
   }

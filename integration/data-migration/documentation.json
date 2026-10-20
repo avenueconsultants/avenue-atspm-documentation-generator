@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 2,
+  "productName": "ATSPM Data Migration",
+  "sourcePaths": ["Commands"],
+  "configurationTypes": [
+    {
+      "typeName": "DataMigrator.Commands.TransferConfigCommandConfiguration",
+      "sectionName": "TransferConfigCommandConfiguration",
+      "description": "Source and import choices for the transfer-config command."
+    },
+    {
+      "typeName": "DataMigrator.Commands.MigrationCommandConfiguration",
+      "sectionName": "MigrationCommandConfiguration",
+      "description": "Source and date-window choices shared by event and speed transfers."
+    },
+    {
+      "typeName": "DataMigrator.Commands.UpgradeTo5CommandConfiguration",
+      "sectionName": "UpgradeTo5CommandConfiguration",
+      "description": "Choices for the combined upgrade-to-5 flow."
+    }
+  ],
+  "excludedProperties": {
+    "MigrationCommandConfiguration": ["EndIsDateOnly"],
+    "UpgradeTo5CommandConfiguration": ["EndIsDateOnly"]
+  },
+  "propertyDescriptions": {
+    "TransferConfigCommandConfiguration": {
+      "Source": "Connection string for the ATSPM 4.3 SQL Server source (--source).",
+      "Delete": "Delete target configuration data before importing (--delete).",
+      "UpdateLocations": "Import configuration and location data into the target (--update-locations; enabled by default).",
+      "ImportSpeedDevices": "Import speed-device configuration, not speed events (--update-speed; enabled by default)."
+    },
+    "MigrationCommandConfiguration": {
+      "Source": "Connection string for the ATSPM 4.3 SQL Server source (--source).",
+      "Start": "Start date and time for event or speed transfer (--start).",
+      "End": "Inclusive end for event or speed transfer; a date-only value includes the full end day (--end).",
+      "Device": "Limit event location selection to one ATSPM DeviceTypes integer; normally omit (--device).",
+      "Batch": "Compressed-window insert batch size for event transfer, maximum 600 (--batch).",
+      "Locations": "Comma-separated list of location identifiers (--locations)."
+    },
+    "UpgradeTo5CommandConfiguration": {
+      "Source": "Connection string for the ATSPM 4.3 SQL Server source; may also come from this configuration section (--source).",
+      "Start": "Start date and time for event and speed migration; may also come from this configuration section (--start).",
+      "End": "Inclusive end; a date-only value includes the full end day; may also come from this configuration section (--end).",
+      "Delete": "Delete target configuration data before importing (--delete).",
+      "UpdateLocations": "Import configuration and location data into the target (--update-locations; enabled by default).",
+      "ImportSpeedDevices": "Import speed-device configuration, not speed events (--update-speed; enabled by default).",
+      "Batch": "Compressed-window insert batch size, maximum 600 (--batch).",
+      "Device": "Limit event location selection to one ATSPM DeviceTypes integer; normally omit (--device).",
+      "Locations": "Comma-separated list of location identifiers (--locations).",
+      "SkipConfig": "Skip configuration migration (--skip-config).",
+      "SkipEvents": "Skip event log migration (--skip-events).",
+      "SkipSpeed": "Skip speed-event migration (--skip-speed)."
+    }
+  },
+  "logMessages": {
+    "sourcePaths": ["Services"],
+    "includeOrdinaryCalls": true,
+    "description": "Literal and interpolated ILogger call sites in migration services. Ordinary calls have no declared event ID; runtime-computed messages are omitted.",
+    "allowedDuplicateEventIds": []
+  },
+  "examples": {
+    "propertyValues": {
+      "Source": "Server=SOURCE_SQL_SERVER;Database=SOURCE_ATSPM;User Id=REPLACE_ME;Password=REPLACE_WITH_SECRET",
+      "Start": "2024-01-01T00:00:00",
+      "End": "2024-01-02T00:00:00"
+    }
+  },
+  "containers": [
+    {
+      "name": "Transfer Configuration",
+      "slug": "transfer-configuration",
+      "sections": ["TransferConfigCommandConfiguration"]
+    },
+    {
+      "name": "Transfer Events and Speed",
+      "slug": "transfer-events-speed",
+      "sections": ["MigrationCommandConfiguration"]
+    },
+    {
+      "name": "Upgrade to 5",
+      "slug": "upgrade-to-5",
+      "sections": ["UpgradeTo5CommandConfiguration"]
+    }
+  ]
+}

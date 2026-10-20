@@ -2,6 +2,10 @@
   "$schema": "./container-config-map.schema.json",
   "schemaVersion": 2,
   "productName": "ATSPM",
+  "site": {
+    "siteDescription": "Generated configuration reference for the ATSPM platform",
+    "copyright": "Copyright Utah Department of Transportation"
+  },
   "sourcePaths": [
     "Atspm/Infrastructure/Configuration",
     "Atspm/Data/Enums"

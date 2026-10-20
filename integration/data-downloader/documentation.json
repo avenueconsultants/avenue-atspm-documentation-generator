@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 2,
+  "productName": "ATSPM Data Downloader",
+  "sourcePaths": ["atspm-data-downloader"],
+  "site": {
+    "siteName": "ATSPM Data Downloader Documentation",
+    "siteDescription": "Configuration and structured log reference for ATSPM Data Downloader.",
+    "exportFilePrefix": "atspm-data-downloader"
+  },
+  "logMessages": {
+    "sourcePaths": ["atspm-data-downloader/Logging"],
+    "description": "Structured events from the aggregation and event-log downloaders. IDs 1000–1007 cover aggregations; IDs 2000–2007 cover event logs.",
+    "allowedDuplicateEventIds": []
+  },
+  "examples": {
+    "propertyValues": {
+      "Start": "2026-07-24T00:00:00",
+      "End": "2026-07-25T00:00:00",
+      "LocationIdentifiers": ["1014", "1015"],
+      "ApiKey": "YOUR_API_KEY_HERE",
+      "ApiUrl": "https://your-atspm-instance.example/data/",
+      "OutputPath": "./output"
+    }
+  },
+  "containers": [
+    {
+      "name": "Data Downloader",
+      "slug": "data-downloader",
+      "autoDiscover": true
+    }
+  ]
+}
