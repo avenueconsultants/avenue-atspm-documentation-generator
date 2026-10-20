@@ -26,6 +26,8 @@ def load_map(path: Path) -> dict:
 
 
 def configure_site(config, documentation_map: dict):
+    docs_dir = config.get("docs_dir") or os.environ.get("DOCS_DIR")
+    support_prefix = "" if docs_dir and (Path(docs_dir) / ".atspm-docs-generator.json").is_file() else "support/"
     product = get_value(documentation_map, "productName")
     site = get_value(documentation_map, "site", {})
     logs = get_value(documentation_map, "logMessages")
@@ -39,9 +41,9 @@ def configure_site(config, documentation_map: dict):
         {"Home": "index.md"},
         {"Containers": [{get_value(page, "name"): f'{get_value(page, "slug")}.md'} for page in pages]},
     ]
-    references = [{"Log messages": "log-messages.md"}] if logs_enabled else []
-    references.append({"Configuration changes": "configuration-changes.md"})
-    references.append({"Configuration templates": "configuration-templates.md"})
+    references = [{"Log messages": support_prefix + "log-messages.md"}] if logs_enabled else []
+    references.append({"Configuration changes": support_prefix + "configuration-changes.md"})
+    references.append({"Configuration templates": support_prefix + "configuration-templates.md"})
     config["nav"].append({"References": references})
     prefix = get_value(site, "exportFilePrefix") or re.sub(r"[^a-z0-9]+", "-", product.lower()).strip("-") or "documentation"
     config.setdefault("extra", {})["documentation"] = {

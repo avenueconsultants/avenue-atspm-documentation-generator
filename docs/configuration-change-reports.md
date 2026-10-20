@@ -6,8 +6,8 @@ separate.
 
 ## Output and comparison semantics
 
-Generation always produces `configuration-snapshot.json` and
-`configuration-changes.md` alongside the existing pages. The home page and MkDocs
+Generation always produces `support/configuration-snapshot.json` and
+`support/configuration-changes.md` alongside the existing pages. The home page and MkDocs
 navigation link to the report; the report links to the downloadable snapshot.
 
 Snapshot schema version 1 contains captured source provenance, effective section

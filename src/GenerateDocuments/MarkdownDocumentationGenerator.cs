@@ -40,7 +40,7 @@ public sealed partial class MarkdownDocumentationGenerator
             })
             .Append(new
             {
-                FileName = "configuration-templates.md",
+                FileName = OutputLayout.TemplatePageFileName,
                 Contents = BuildTemplatePage(map, options)
             })
             .Append(new
@@ -51,6 +51,7 @@ public sealed partial class MarkdownDocumentationGenerator
             .ToArray();
 
         Directory.CreateDirectory(options.OutputRoot);
+        OutputLayout.CreateSupportDirectory(options.OutputRoot);
         foreach (var page in pages)
         {
             WriteFile(
@@ -85,10 +86,10 @@ public sealed partial class MarkdownDocumentationGenerator
         builder.AppendLine();
         if (map.LogMessages.Enabled)
         {
-            builder.AppendLine("- [Log messages](log-messages.md)");
+            builder.AppendLine("- [Log messages](support/log-messages.md)");
         }
-        builder.AppendLine("- [Configuration changes](configuration-changes.md)");
-        builder.AppendLine("- [Configuration templates](configuration-templates.md)");
+        builder.AppendLine("- [Configuration changes](support/configuration-changes.md)");
+        builder.AppendLine("- [Configuration templates](support/configuration-templates.md)");
 
         return NormalizeLineEndings(builder.ToString());
     }
@@ -126,8 +127,8 @@ public sealed partial class MarkdownDocumentationGenerator
         builder.AppendLine();
         builder.AppendLine("## Download templates");
         builder.AppendLine();
-        builder.AppendLine($"- [JSON example]({container.Slug}.example.json)");
-        builder.AppendLine($"- [Environment example]({container.Slug}.env.example)");
+        builder.AppendLine($"- [JSON example](support/{container.Slug}.example.json)");
+        builder.AppendLine($"- [Environment example](support/{container.Slug}.env.example)");
         builder.AppendLine();
         builder.AppendLine("These are starting points from the source revision linked above. Replace placeholders before use.");
 

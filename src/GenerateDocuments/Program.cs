@@ -42,6 +42,7 @@ public static class Program
 
             OutputDirectoryTransaction.Run(options.OutputRoot, stagingRoot =>
             {
+                OutputLayout.CreateSupportDirectory(stagingRoot);
                 var stagingOptions = options with { OutputRoot = stagingRoot };
                 result = new MarkdownDocumentationGenerator().Generate(
                     map,
@@ -51,7 +52,7 @@ public static class Program
                 if (map.LogMessages.Enabled)
                     logResult = new LogMessageDocumentationGenerator().Generate(
                     logMessages,
-                    Path.Combine(stagingRoot, "log-messages.md"),
+                    Path.Combine(stagingRoot, OutputLayout.LogFileName),
                     stagingOptions,
                     map.LogMessages.Description);
                 GeneratedOutputPolicy.WriteManifest(stagingRoot, map);

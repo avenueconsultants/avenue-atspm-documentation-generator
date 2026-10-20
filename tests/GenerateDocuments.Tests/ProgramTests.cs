@@ -27,14 +27,14 @@ public sealed class ProgramTests
             "--output-root", output, "--map", path, "--repository-url", "https://github.com/example/utility",
             "--repository-ref", "abc123", "--generated-at", "2026-09-29T00:00:00Z"];
         Assert.Equal(0, Program.Main(args));
-        Assert.True(File.Exists(System.IO.Path.Combine(output, "log-messages.md")));
+        Assert.True(File.Exists(System.IO.Path.Combine(output, "support/log-messages.md")));
         if (omit)
             map.AsObject().Remove("logMessages");
         else
             map["logMessages"] = System.Text.Json.Nodes.JsonNode.Parse("""{"enabled":false,"sourcePath":"does-not-exist"}""");
         File.WriteAllText(path, map.ToJsonString());
         Assert.Equal(0, Program.Main(args));
-        Assert.False(File.Exists(System.IO.Path.Combine(output, "log-messages.md")));
+        Assert.False(File.Exists(System.IO.Path.Combine(output, "support/log-messages.md")));
         Assert.DoesNotContain("log-messages", File.ReadAllText(System.IO.Path.Combine(output, "index.md")));
         Assert.DoesNotContain("log-messages", File.ReadAllText(System.IO.Path.Combine(output, GeneratedOutputPolicy.ManifestFileName)));
     }

@@ -55,7 +55,7 @@ def main():
         require("EndIsDateOnly" not in combined, "Derived end-date flag must not appear as a setting.")
         require("Compressed-window insert batch size" in combined, "CLI-backed descriptions are missing.")
         require("REPLACE_WITH_SECRET" in combined, "Source example must retain a safe placeholder.")
-        logs = (output / "log-messages.md").read_text(encoding="utf-8")
+        logs = (output / "support/log-messages.md").read_text(encoding="utf-8")
         require("**102** log messages" in logs, "Ordinary log call coverage changed.")
         require(not re.search(r"^\| `?\d+`? \|", logs, re.MULTILINE),
                 "Ordinary calls must not receive invented event IDs.")
@@ -64,7 +64,7 @@ def main():
             str(ROOT / "mkdocs.yml"), "--site-dir", str(workspace / "site"), env=env)
         for slug in ("transfer-configuration", "transfer-events-speed", "upgrade-to-5"):
             for extension in ("example.json", "env.example"):
-                require((workspace / "site" / f"{slug}.{extension}").is_file(),
+                require((workspace / "site" / f"support/{slug}.{extension}").is_file(),
                         f"Published site is missing {slug}.{extension} download.")
         before = files(output)
         generate()

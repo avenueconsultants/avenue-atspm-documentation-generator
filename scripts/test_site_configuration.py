@@ -43,8 +43,8 @@ class SiteConfigurationTests(unittest.TestCase):
             "logMessages": {"enabled": False, "sourcePath": "does-not-exist"},
         })
         self.assertEqual([{"Home": "index.md"}, {"Containers": [{"Utility": "utility.md"}]},
-                          {"References": [{"Configuration changes": "configuration-changes.md"},
-                                          {"Configuration templates": "configuration-templates.md"}]}], config["nav"])
+                          {"References": [{"Configuration changes": "support/configuration-changes.md"},
+                                          {"Configuration templates": "support/configuration-templates.md"}]}], config["nav"])
         self.assertEqual("Utility Documentation", config["site_name"])
         self.assertEqual("", config["copyright"])
 
@@ -117,13 +117,13 @@ class SiteConfigurationTests(unittest.TestCase):
                     self.assertNotIn("Config API", index)
                     self.assertNotIn("ATSPM", index)
                     self.assertTrue((site / "utility/index.html").exists())
-                    self.assertTrue((site / "configuration-changes/index.html").exists())
-                    self.assertTrue((site / "configuration-snapshot.json").exists())
-                    self.assertIn('href="configuration-changes/"', index)
-                    self.assertEqual(logging, (site / "log-messages/index.html").exists())
-                    self.assertEqual(logging, 'href="log-messages/"' in index)
+                    self.assertTrue((site / "support/configuration-changes/index.html").exists())
+                    self.assertTrue((site / "support/configuration-snapshot.json").exists())
+                    self.assertIn('href="support/configuration-changes/"', index)
+                    self.assertEqual(logging, (site / "support/log-messages/index.html").exists())
+                    self.assertEqual(logging, 'href="support/log-messages/"' in index)
                     if logging:
-                        html = (site / "log-messages/index.html").read_text(encoding="utf-8")
+                        html = (site / "support/log-messages/index.html").read_text(encoding="utf-8")
                         self.assertIn('const logFilename = "example-log-messages";', html)
                         self.assertIn(r'\u003c/script\u003e', html)
                         self.assertNotIn('Utility "Events" </script>', html)
@@ -145,14 +145,14 @@ class SiteConfigurationTests(unittest.TestCase):
             self.run_command(command + ["old"], os.environ)
             source.write_text('[ConfigurationSection("Utility")] public class Options { public int Port { get; set; } = 456; public required string Host { get; set; } }', encoding="utf-8")
             self.run_command(command + ["new"], os.environ)
-            original = (output / "configuration-changes.md").read_bytes()
+            original = (output / "support/configuration-changes.md").read_bytes()
             self.run_command(command + ["new"], os.environ)
-            self.assertEqual(original, (output / "configuration-changes.md").read_bytes())
+            self.assertEqual(original, (output / "support/configuration-changes.md").read_bytes())
             env = dict(os.environ, DOCS_CONFIG=str(config), DOCS_DIR=str(output))
             site = root / "site"
             self.run_command([sys.executable, "-m", "mkdocs", "build", "--strict",
                 "--config-file", str(ROOT / "mkdocs.yml"), "--site-dir", str(site)], env)
-            html = (site / "configuration-changes/index.html").read_text(encoding="utf-8")
+            html = (site / "support/configuration-changes/index.html").read_text(encoding="utf-8")
             for expected in ["Default changed", "Required setting added", "Utility__Host", "Not set", "123", "456",
                              "https://github.com/example/utility/commit/old", "configuration-snapshot.json"]:
                 self.assertIn(expected, html)

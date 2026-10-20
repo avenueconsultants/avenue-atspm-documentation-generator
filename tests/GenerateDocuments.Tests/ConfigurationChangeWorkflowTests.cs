@@ -75,11 +75,42 @@ public sealed class ConfigurationChangeWorkflowTests
             else json["sections"]![0]!["properties"]![0]!.AsObject().Remove("required");
             File.WriteAllText(path, json.ToJsonString());
         }
-        var before = Directory.GetFiles(output).ToDictionary(file => System.IO.Path.GetFileName(file), File.ReadAllBytes);
+        var before = Directory.GetFiles(output, "*", SearchOption.AllDirectories).ToDictionary(file => System.IO.Path.GetRelativePath(output, file), File.ReadAllBytes);
         WriteSource(directory, 456);
         Assert.Equal(1, Generate(directory, "second"));
-        Assert.Equal(before.Count, Directory.GetFiles(output).Length);
-        foreach (var file in Directory.GetFiles(output)) Assert.Equal(before[System.IO.Path.GetFileName(file)], File.ReadAllBytes(file));
+        var after = Directory.GetFiles(output, "*", SearchOption.AllDirectories);
+        Assert.Equal(before.Count, after.Length);
+        foreach (var file in after) Assert.Equal(before[System.IO.Path.GetRelativePath(output, file)], File.ReadAllBytes(file));
+    }
+
+    [Fact]
+    public void FlatOutputMigratesToSupportWithoutLosingBaseline()
+    {
+        using var directory = new TemporaryDirectory();
+        WriteMap(directory);
+        WriteSource(directory, 123);
+        Assert.Equal(0, Generate(directory, "first"));
+        var output = System.IO.Path.Combine(directory.Path, "output");
+        var support = System.IO.Path.Combine(output, "support");
+        var snapshot = File.ReadAllBytes(System.IO.Path.Combine(output, ConfigurationChangeGenerator.SnapshotFileName));
+        var report = File.ReadAllBytes(System.IO.Path.Combine(output, ConfigurationChangeGenerator.ReportFileName));
+        var manifestPath = System.IO.Path.Combine(output, GeneratedOutputPolicy.ManifestFileName);
+        var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        manifest["ManagedFiles"] = new JsonArray(manifest["ManagedFiles"]!.AsArray()
+            .Select(item => JsonValue.Create(item!.GetValue<string>().Replace("support/", ""))).ToArray());
+        File.WriteAllText(manifestPath, manifest.ToJsonString());
+        foreach (var file in Directory.GetFiles(support))
+            File.Move(file, System.IO.Path.Combine(output, System.IO.Path.GetFileName(file)));
+        Directory.Delete(support);
+
+        Assert.Equal(0, Generate(directory, "second"));
+        Assert.Equal(new[] { "index.md", "worker.md" }, Directory.GetFiles(output)
+            .Select(System.IO.Path.GetFileName).Order().ToArray());
+        Assert.Equal(snapshot, File.ReadAllBytes(System.IO.Path.Combine(output, ConfigurationChangeGenerator.SnapshotFileName)));
+        Assert.Equal(report, File.ReadAllBytes(System.IO.Path.Combine(output, ConfigurationChangeGenerator.ReportFileName)));
+        WriteSource(directory, 456);
+        Assert.Equal(0, Generate(directory, "third"));
+        Assert.Equal("first", ConfigurationChangeGenerator.LoadPrevious(output)!.Report.BaselineRevision);
     }
 
     [Fact]

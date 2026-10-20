@@ -4,7 +4,7 @@ namespace AtspmDocsGenerator;
 
 internal static class GeneratedOutputPolicy
 {
-    public const string ManifestFileName = ".atspm-docs-generator.json";
+    public const string ManifestFileName = "support/.atspm-docs-generator.json";
     private const string GeneratorId = "atspm-documentation-generator";
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
 
@@ -15,28 +15,19 @@ internal static class GeneratedOutputPolicy
             return;
         }
 
-        var actualFiles = Directory.EnumerateFiles(outputRoot, "*", SearchOption.TopDirectoryOnly)
-            .Select(Path.GetFileName)
-            .Where(name => name is not null)
-            .Cast<string>()
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-        var directories = Directory.EnumerateDirectories(outputRoot, "*", SearchOption.TopDirectoryOnly)
-            .Select(Path.GetFileName)
-            .ToArray();
+        var entries = EnumerateEntries(outputRoot).ToArray();
+        var actualFiles = entries.Where(path => File.Exists(path))
+            .Select(path => Path.GetRelativePath(outputRoot, path).Replace('\\', '/'))
+            .Order(StringComparer.Ordinal).ToArray();
+        var directories = entries.Where(Directory.Exists)
+            .Select(path => Path.GetRelativePath(outputRoot, path).Replace('\\', '/')).ToArray();
 
         if (actualFiles.Length == 0 && directories.Length == 0)
         {
             return;
         }
 
-        if (directories.Length > 0)
-        {
-            throw new InvalidDataException(
-                $"Output root contains directories not owned by the generator: {outputRoot}");
-        }
-
-        var manifestPath = Path.Combine(outputRoot, ManifestFileName);
+        var manifestPath = OutputLayout.ExistingPath(outputRoot, ManifestFileName);
         if (File.Exists(manifestPath))
         {
             var manifest = JsonSerializer.Deserialize<GeneratedOutputManifest>(File.ReadAllText(manifestPath))
@@ -45,31 +36,35 @@ internal static class GeneratedOutputPolicy
             {
                 throw new InvalidDataException($"Output root has an unrecognized ownership manifest: {manifestPath}");
             }
-            if (manifest.ManagedFiles is null || manifest.ManagedFiles.Any(string.IsNullOrWhiteSpace))
+            if (manifest.ManagedFiles is null || manifest.ManagedFiles.Any(name =>
+                string.IsNullOrWhiteSpace(name) || name.Contains('\\') || Path.IsPathRooted(name)
+                || name.Split('/').Any(part => part is "" or "." or "..")))
                 throw new InvalidDataException($"Output root has an invalid managed file list: {manifestPath}");
 
-            var allowed = manifest.ManagedFiles.Append(ManifestFileName).ToHashSet(StringComparer.Ordinal);
+            var allowed = manifest.ManagedFiles.Append(Path.GetRelativePath(outputRoot, manifestPath).Replace('\\', '/'))
+                .ToHashSet(StringComparer.Ordinal);
             var foreign = actualFiles.Where(file => !allowed.Contains(file)).ToArray();
-            if (foreign.Length > 0)
+            var foreignDirectories = directories.Where(directory => !allowed.Any(file => file.StartsWith(directory + "/", StringComparison.Ordinal))).ToArray();
+            if (foreign.Length > 0 || foreignDirectories.Length > 0)
             {
                 throw new InvalidDataException(
-                    $"Output root contains files not owned by the generator: {string.Join(", ", foreign)}");
+                    $"Output root contains files or directories not owned by the generator: {string.Join(", ", foreign.Concat(foreignDirectories))}");
             }
 
             return;
         }
 
-        var expected = GetManagedFiles(map).Order(StringComparer.Ordinal).ToArray();
+        var expected = GetManagedFiles(map).Select(name => Path.GetFileName(name)).Order(StringComparer.Ordinal).ToArray();
         var legacy = map.Containers.Select(container => $"{container.Slug}.md")
             .Append("index.md")
             .Concat(map.LogMessages.Enabled ? new[] { "log-messages.md" } : [])
             .Order(StringComparer.Ordinal).ToArray();
-        var previous = legacy.Append(ConfigurationChangeGenerator.ReportFileName)
-            .Append(ConfigurationChangeGenerator.SnapshotFileName)
+        var previous = legacy.Append(Path.GetFileName(ConfigurationChangeGenerator.ReportFileName))
+            .Append(Path.GetFileName(ConfigurationChangeGenerator.SnapshotFileName))
             .Order(StringComparer.Ordinal).ToArray();
-        if (!actualFiles.SequenceEqual(expected, StringComparer.Ordinal)
+        if (directories.Length > 0 || (!actualFiles.SequenceEqual(expected, StringComparer.Ordinal)
             && !actualFiles.SequenceEqual(previous, StringComparer.Ordinal)
-            && !actualFiles.SequenceEqual(legacy, StringComparer.Ordinal))
+            && !actualFiles.SequenceEqual(legacy, StringComparer.Ordinal)))
         {
             throw new InvalidDataException(
                 $"Existing output root is not empty and has no generator ownership manifest: {outputRoot}");
@@ -78,6 +73,7 @@ internal static class GeneratedOutputPolicy
 
     public static void WriteManifest(string outputRoot, DocumentationMap map)
     {
+        OutputLayout.CreateSupportDirectory(outputRoot);
         var manifest = new GeneratedOutputManifest(GeneratorId, GetManagedFiles(map));
         var json = DocumentationText.NormalizeLineEndings(JsonSerializer.Serialize(manifest, SerializerOptions)) + "\n";
         File.WriteAllText(Path.Combine(outputRoot, ManifestFileName), json);
@@ -87,15 +83,27 @@ internal static class GeneratedOutputPolicy
         map.Containers.Select(container => $"{container.Slug}.md")
             .Concat(map.Containers.SelectMany(container => new[]
             {
-                $"{container.Slug}.example.json", $"{container.Slug}.env.example"
+                OutputLayout.SupportFile($"{container.Slug}.example.json"), OutputLayout.SupportFile($"{container.Slug}.env.example")
             }))
             .Append("index.md")
-            .Append("configuration-templates.md")
+            .Append(OutputLayout.TemplatePageFileName)
             .Append(ConfigurationChangeGenerator.ReportFileName)
             .Append(ConfigurationChangeGenerator.SnapshotFileName)
-            .Concat(map.LogMessages.Enabled ? new[] { "log-messages.md" } : [])
+            .Concat(map.LogMessages.Enabled ? new[] { OutputLayout.LogFileName } : [])
             .Order(StringComparer.Ordinal)
             .ToArray();
 
     private sealed record GeneratedOutputManifest(string Generator, IReadOnlyList<string> ManagedFiles);
+
+    private static IEnumerable<string> EnumerateEntries(string root)
+    {
+        foreach (var path in Directory.EnumerateFileSystemEntries(root))
+        {
+            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException($"Generated output cannot contain symbolic links: {path}");
+            yield return path;
+            if (Directory.Exists(path))
+                foreach (var child in EnumerateEntries(path)) yield return child;
+        }
+    }
 }

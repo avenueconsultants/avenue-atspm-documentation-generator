@@ -79,7 +79,7 @@ def main():
 
         check()
         generate()
-        snapshot = json.loads((output / "configuration-snapshot.json").read_text(encoding="utf-8"))
+        snapshot = json.loads((output / "support/configuration-snapshot.json").read_text(encoding="utf-8"))
         sections = {item["name"]: item for item in snapshot["sections"]}
         require(set(sections) == {"EventListenerConfiguration", "SpeedEmitterConfiguration"},
                 "Expected both actual section bindings.")
@@ -102,7 +102,7 @@ def main():
         require(f"/blob/{REVISION}/{APP}/Configuration/SpeedListenerConfiguration.cs#L25" in page,
                 "Listener source link or named binding changed.")
         ids = [int(value) for value in re.findall(r"^\| `(\d+)`",
-            (output / "log-messages.md").read_text(encoding="utf-8"), re.MULTILINE)]
+            (output / "support/log-messages.md").read_text(encoding="utf-8"), re.MULTILINE)]
         require(ids == list(range(2001, 2008)), "Expected seven unique emitter events.")
         require(snapshot["report"]["changes"] == [], "First run must establish a baseline.")
         build()

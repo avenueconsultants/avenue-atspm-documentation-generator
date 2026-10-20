@@ -1,7 +1,7 @@
 # Downloadable configuration templates
 
-Part 11 adds two generated files per configured page: `<slug>.example.json` and
-`<slug>.env.example`. The page and the generated **Configuration templates**
+Part 11 adds two generated files per configured page: `support/<slug>.example.json` and
+`support/<slug>.env.example`. The page and the generated **Configuration templates**
 reference link to both files. The reference identifies the source repository
 and exact revision used for generation. JSON remains directly parseable as
 application configuration, so revision metadata lives on that reference page

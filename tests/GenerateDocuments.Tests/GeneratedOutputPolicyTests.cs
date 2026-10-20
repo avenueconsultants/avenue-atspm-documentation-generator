@@ -30,9 +30,24 @@ public sealed class GeneratedOutputPolicyTests
         var map = CreateMap();
         GeneratedOutputPolicy.ValidateExisting(output, map);
         GeneratedOutputPolicy.WriteManifest(output, map);
+        File.Move(System.IO.Path.Combine(output, "log-messages.md"), System.IO.Path.Combine(output, OutputLayout.LogFileName));
         GeneratedOutputPolicy.ValidateExisting(output, map);
 
         File.WriteAllText(System.IO.Path.Combine(output, "foreign.txt"), "foreign");
+        Assert.Throws<InvalidDataException>(() => GeneratedOutputPolicy.ValidateExisting(output, map));
+    }
+
+    [Fact]
+    public void OwnedOutputRejectsUnmanagedNestedFilesAndDirectories()
+    {
+        using var directory = new TemporaryDirectory();
+        var output = System.IO.Path.Combine(directory.Path, "output");
+        var map = CreateMap();
+        GeneratedOutputPolicy.WriteManifest(output, map);
+        var notes = directory.WriteFile("output/support/notes.md", "handwritten");
+        Assert.Throws<InvalidDataException>(() => GeneratedOutputPolicy.ValidateExisting(output, map));
+        File.Delete(notes);
+        Directory.CreateDirectory(System.IO.Path.Combine(output, "foreign"));
         Assert.Throws<InvalidDataException>(() => GeneratedOutputPolicy.ValidateExisting(output, map));
     }
 

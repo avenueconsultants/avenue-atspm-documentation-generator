@@ -8,8 +8,8 @@ using static DocumentationText;
 
 public static class ConfigurationChangeGenerator
 {
-    public const string SnapshotFileName = "configuration-snapshot.json";
-    public const string ReportFileName = "configuration-changes.md";
+    public const string SnapshotFileName = "support/configuration-snapshot.json";
+    public const string ReportFileName = "support/configuration-changes.md";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -19,16 +19,16 @@ public static class ConfigurationChangeGenerator
 
     public static ConfigurationSnapshot? LoadPrevious(string outputRoot)
     {
-        var path = Path.Combine(outputRoot, SnapshotFileName);
+        var path = OutputLayout.ExistingPath(outputRoot, SnapshotFileName);
         if (!File.Exists(path))
         {
-            var manifestPath = Path.Combine(outputRoot, GeneratedOutputPolicy.ManifestFileName);
-            var expected = File.Exists(Path.Combine(outputRoot, ReportFileName));
+            var manifestPath = OutputLayout.ExistingPath(outputRoot, GeneratedOutputPolicy.ManifestFileName);
+            var expected = File.Exists(OutputLayout.ExistingPath(outputRoot, ReportFileName));
             if (File.Exists(manifestPath))
             {
                 using var manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
                 expected |= manifest.RootElement.GetProperty("ManagedFiles").EnumerateArray()
-                    .Any(item => item.GetString() == SnapshotFileName);
+                    .Any(item => item.GetString() is { } name && Path.GetFileName(name) == Path.GetFileName(SnapshotFileName));
             }
             if (expected)
                 throw new InvalidDataException($"Previous {SnapshotFileName} is missing. Restore it from the documentation baseline before regenerating.");
@@ -145,6 +145,7 @@ public static class ConfigurationChangeGenerator
 
     public static void Write(string outputRoot, ConfigurationSnapshot snapshot)
     {
+        OutputLayout.CreateSupportDirectory(outputRoot);
         File.WriteAllText(Path.Combine(outputRoot, SnapshotFileName), NormalizeLineEndings(JsonSerializer.Serialize(snapshot, JsonOptions)) + "\n", new UTF8Encoding(false));
         File.WriteAllText(Path.Combine(outputRoot, ReportFileName), Render(snapshot), new UTF8Encoding(false));
     }

@@ -63,19 +63,19 @@ jobs:
           set -euo pipefail
           mapfile -t expected < <(
             jq -r '.containers[].slug + ".md"' config/container-config-map.json
-            printf '%s\n' index.md log-messages.md configuration-changes.md configuration-templates.md
+            printf '%s\n' index.md support/log-messages.md support/configuration-changes.md support/configuration-templates.md
           )
 
           for file in "${expected[@]}"; do
             test -s "_generated/$file"
           done
 
-          test "$(find _generated -maxdepth 1 -type f -name '*.md' | wc -l)" -eq "${#expected[@]}"
-          test -s "_generated/.atspm-docs-generator.json"
-          test -s "_generated/configuration-snapshot.json"
+          test "$(find _generated -type f -name '*.md' | wc -l)" -eq "${#expected[@]}"
+          test -s "_generated/support/.atspm-docs-generator.json"
+          test -s "_generated/support/configuration-snapshot.json"
           jq -r '.containers[].slug' config/container-config-map.json | while read -r slug; do
-            test -s "_generated/$slug.example.json"
-            test -s "_generated/$slug.env.example"
+            test -s "_generated/support/$slug.example.json"
+            test -s "_generated/support/$slug.env.example"
           done
 
       - name: Prepare consumer-owned configuration

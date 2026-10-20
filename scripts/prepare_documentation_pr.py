@@ -56,14 +56,21 @@ def files(root: Path) -> dict[str, bytes]:
     if not root.is_dir():
         raise ValueError(f"Expected a generated directory: {root}")
     result = {}
-    for path in root.iterdir():
-        if path.is_symlink() or not path.is_file():
+    for path in root.rglob("*"):
+        if path.is_symlink():
             raise ValueError(f"Generated output must contain only regular files: {path}")
-        result[path.name] = path.read_bytes()
+        if path.is_dir():
+            if path.relative_to(root).as_posix() != "support":
+                raise ValueError(f"Unexpected generated directory: {path}")
+            continue
+        if not path.is_file():
+            raise ValueError(f"Generated output must contain only regular files: {path}")
+        result[path.relative_to(root).as_posix()] = path.read_bytes()
     return result
 
 
 def semantic_content(name: str, content: bytes, repository_url: str) -> bytes:
+    name = PurePosixPath(name).name
     if not name.endswith(".md") or name == "configuration-changes.md":
         return content
     text = content.decode("utf-8").replace("\r\n", "\n")
@@ -100,10 +107,10 @@ def branch_name(target_branch: str, output: str) -> str:
 def configuration_review(output: Path, revision: str, output_name: str,
                          previous_snapshot: bytes | None) -> str:
     """Put the actionable source-contract changes where PR reviewers will see them."""
-    snapshot_bytes = (output / "configuration-snapshot.json").read_bytes()
+    snapshot_bytes = (output / "support/configuration-snapshot.json").read_bytes()
     snapshot = json.loads(snapshot_bytes)
     report = snapshot["report"]
-    location = f"{output_name}/configuration-changes.md"
+    location = f"{output_name}/support/configuration-changes.md"
     lines = ["## Configuration review", "",
              f"Detailed report: `{location}`. Review deployment values; source analysis cannot confirm what is deployed.", ""]
     if previous_snapshot == snapshot_bytes or snapshot["sourceRevision"] != revision:
@@ -163,6 +170,7 @@ def prepare(args) -> bool:
         generated = staging / "generated"
         generated.mkdir()
         for name, content in before.items():
+            (generated / name).parent.mkdir(parents=True, exist_ok=True)
             (generated / name).write_bytes(content)
         # The generator validates ownership and the previous snapshot before
         # replacing anything. Its workspace here is disposable staging only.
@@ -179,7 +187,7 @@ def prepare(args) -> bool:
         shutil.copytree(generated, args.artifacts / "generated")
         shutil.copyfile(config, args.artifacts / "documentation.json")
         review = configuration_review(generated, sha, args.output,
-                                      before.get("configuration-snapshot.json"))
+                                      before.get("support/configuration-snapshot.json", before.get("configuration-snapshot.json")))
         report = (
             f"Generated from {args.repository_url}/commit/{sha}.\n\n"
             f"PR target: `{args.target_branch}` at `{target_sha}`.\n\n"
@@ -197,6 +205,7 @@ def prepare(args) -> bool:
             for name in before.keys() - after.keys():
                 (output / name).unlink()
             for name, content in after.items():
+                (output / name).parent.mkdir(parents=True, exist_ok=True)
                 (output / name).write_bytes(content)
             if map_changed:
                 target_config.write_bytes(new_map)

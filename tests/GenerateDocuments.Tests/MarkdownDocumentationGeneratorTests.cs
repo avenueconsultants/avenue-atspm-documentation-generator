@@ -106,8 +106,8 @@ public sealed class MarkdownDocumentationGeneratorTests
         var expected = File.ReadAllText(expectedPath).Replace("\r\n", "\n");
 
         Assert.StartsWith(expected, actual);
-        Assert.Contains("[JSON example](event-log-utility.example.json)", actual);
-        Assert.Contains("[Environment example](event-log-utility.env.example)", actual);
+        Assert.Contains("[JSON example](support/event-log-utility.example.json)", actual);
+        Assert.Contains("[Environment example](support/event-log-utility.env.example)", actual);
         Assert.DoesNotContain(System.IO.Path.GetTempPath(), actual);
 
         var bytes = File.ReadAllBytes(actualPath);

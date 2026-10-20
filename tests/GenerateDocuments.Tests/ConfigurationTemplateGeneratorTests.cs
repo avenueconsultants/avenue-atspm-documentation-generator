@@ -27,8 +27,8 @@ public sealed class ConfigurationTemplateGeneratorTests
             ])
         };
         ConfigurationTemplateGenerator.Generate(map, sections, directory.Path);
-        var json = File.ReadAllText(Path.Combine(directory.Path, "worker.example.json"));
-        var env = File.ReadAllText(Path.Combine(directory.Path, "worker.env.example"));
+        var json = File.ReadAllText(Path.Combine(directory.Path, "support/worker.example.json"));
+        var env = File.ReadAllText(Path.Combine(directory.Path, "support/worker.env.example"));
         using var document = JsonDocument.Parse(json);
         var nested = document.RootElement.GetProperty("Worker").GetProperty("Nested");
         Assert.Equal("REPLACE_WITH_SECRET", nested.GetProperty("Password").GetString());

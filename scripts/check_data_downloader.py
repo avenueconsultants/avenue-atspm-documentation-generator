@@ -62,7 +62,7 @@ def main():
                 str(ROOT / "mkdocs.yml"), "--site-dir", str(workspace / "site"), env=env)
 
         generate()
-        snapshot = json.loads((output / "configuration-snapshot.json").read_text())
+        snapshot = json.loads((output / "support/configuration-snapshot.json").read_text())
         require(len(snapshot["sections"]) == 1, "Expected one configuration section.")
         section = snapshot["sections"][0]
         require(section["name"] == "DownloaderConfiguration", "Incorrect section binding.")
@@ -76,7 +76,7 @@ def main():
         require(properties["LocationIdentifiers"]["environmentVariables"] == ["DownloaderConfiguration__LocationIdentifiers__0"],
                 "List environment binding must be indexed.")
         require(snapshot["report"]["changes"] == [], "First run must establish a baseline.")
-        logs = (output / "log-messages.md").read_text(encoding="utf-8")
+        logs = (output / "support/log-messages.md").read_text(encoding="utf-8")
         ids = [int(value) for value in re.findall(r"^\| `(\d+)`", logs, re.MULTILINE)]
         require(ids == list(range(1000, 1008)) + list(range(2000, 2008)), "Expected all 16 unique events.")
         page = (output / "data-downloader.md").read_text(encoding="utf-8")
@@ -117,13 +117,13 @@ def main():
             '    public partial void RetryScheduled();\n') + content[position:]
         log.write_text(content, encoding="utf-8")
         generate("c" * 40, "2026-10-03T00:00:00Z")
-        changed = json.loads((output / "configuration-snapshot.json").read_text())
+        changed = json.loads((output / "support/configuration-snapshot.json").read_text())
         changes = changed["report"]["changes"]
         require(any(item["kind"] == "Required setting added" and item["property"] == "StorageRegion" for item in changes),
                 "A new required setting must appear in the change report.")
         require(any(item["kind"] == "Section added" and item["section"] == "RetryConfiguration" for item in changes),
                 "A new source folder/section must be discovered automatically.")
-        require("`2008`" in (output / "log-messages.md").read_text(), "New log event missing.")
+        require("`2008`" in (output / "support/log-messages.md").read_text(), "New log event missing.")
         require(MAP.read_bytes() == map_bytes, "Automatic discovery must not need map edits.")
         build()
     print("Data Downloader integration passed: coverage, branding, strict sites, repeatability and automatic discovery.")

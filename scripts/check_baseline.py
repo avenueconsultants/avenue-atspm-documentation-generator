@@ -48,10 +48,11 @@ def main() -> None:
             "--generated-at", metadata["sourceTimestamp"],
         ], check=True)
         expected = {p.name: p.read_bytes() for p in (BASELINE / "expected").iterdir() if p.is_file()}
-        actual = {p.name: p.read_bytes() for p in output.iterdir() if p.is_file()}
+        actual = {p.name: p.read_bytes() for p in output.rglob("*") if p.is_file()}
         # Keep the original snapshots frozen while checking additive references.
-        expected["index.md"] += (b"- [Configuration changes](configuration-changes.md)\n"
-                                 b"- [Configuration templates](configuration-templates.md)\n")
+        expected["index.md"] = expected["index.md"].replace(b"](log-messages.md)", b"](support/log-messages.md)")
+        expected["index.md"] += (b"- [Configuration changes](support/configuration-changes.md)\n"
+                                 b"- [Configuration templates](support/configuration-templates.md)\n")
         for name in [item for item in expected if item.endswith(".md") and item != "index.md" and item != "log-messages.md"]:
             suffix = b"\n## Download templates\n"
             if suffix not in actual[name]:
@@ -70,6 +71,7 @@ def main() -> None:
             "configuration-changes.md", "configuration-snapshot.json", "configuration-templates.md"]
             + [f"{container['slug']}.{extension}" for container in json.loads(args.map.read_text(encoding="utf-8"))["containers"]
                for extension in ("example.json", "env.example")])
+        manifest["ManagedFiles"] = sorted("support/" + name if name != "index.md" and (not name.endswith(".md") or name in ("log-messages.md", "configuration-changes.md", "configuration-templates.md")) else name for name in manifest["ManagedFiles"])
         expected[".atspm-docs-generator.json"] = (json.dumps(manifest, indent=2) + "\n").encode()
         snapshot = json.loads(actual.pop("configuration-snapshot.json"))
         report = actual.pop("configuration-changes.md").decode()

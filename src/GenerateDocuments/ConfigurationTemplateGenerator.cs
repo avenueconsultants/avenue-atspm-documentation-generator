@@ -14,6 +14,7 @@ internal static partial class ConfigurationTemplateGenerator
     public static void Generate(DocumentationMap map,
         IReadOnlyDictionary<string, ConfigurationSection> available, string outputRoot)
     {
+        OutputLayout.CreateSupportDirectory(outputRoot);
         foreach (var container in map.Containers)
         {
             var sections = ConfigurationDiscovery.GetSections(container, available)
@@ -41,9 +42,9 @@ internal static partial class ConfigurationTemplateGenerator
                     }
                 }
             }
-            File.WriteAllText(Path.Combine(outputRoot, $"{container.Slug}.example.json"),
+            File.WriteAllText(Path.Combine(outputRoot, OutputLayout.SupportFile($"{container.Slug}.example.json")),
                 json.ToJsonString(JsonOptions) + "\n", Utf8WithoutBom);
-            File.WriteAllText(Path.Combine(outputRoot, $"{container.Slug}.env.example"),
+            File.WriteAllText(Path.Combine(outputRoot, OutputLayout.SupportFile($"{container.Slug}.env.example")),
                 string.Join("\n", environment.Select(item => $"{item.Key}={item.Value}")) + "\n",
                 Utf8WithoutBom);
         }
